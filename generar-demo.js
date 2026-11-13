@@ -42,6 +42,12 @@
       centinela puede estar en `EQUIPO` o en `NOMBRES`.
    3. El equipo propio tiene que quedar PRIMERO (`EQUIPO 1`): es el que la
       demo abre, y `patronEquipoPropio` del JSON lo busca por ese nombre.
+   4. LA NUMERACION NO PUEDE SER EL ORDEN ALFABETICO. Numerar 2..17 por el
+      nombre real dejaba una pista: quien conoce los diecisiete clubes de
+      la conferencia los reconoce ordenandolos. Desde 2026-11-13 el resto
+      de los equipos y los jugadores de cada plantel se numeran en un
+      orden ALEATORIO pero FIJO (semilla constante): al regenerar, el
+      mismo jugador conserva su numero.
    ===================================================================== */
 'use strict';
 
@@ -121,7 +127,31 @@ function ordenarEquipos(nombres) {
   const propios = nombres.filter(n => PATRON_PROPIO.test(n));
   const resto = nombres.filter(n => !PATRON_PROPIO.test(n))
     .sort((a, b) => a.localeCompare(b, 'es'));
-  return propios.sort((a, b) => a.localeCompare(b, 'es')).concat(resto);
+  /* Se ordena alfabetico ANTES de mezclar: el Set llega en el orden en
+     que aparecen las filas, y mezclar eso no seria reproducible. */
+  return propios.sort((a, b) => a.localeCompare(b, 'es')).concat(mezclar(resto, generador(SEMILLA)));
+}
+
+/* SEMILLA FIJA + mulberry32: aleatorio para quien mira, identico en cada
+   corrida. Con un azar sin semilla cada regeneracion renumeraria a todos. */
+const SEMILLA = 20261113;
+function generador(semilla) {
+  let a = semilla >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function mezclar(lista, rnd) {
+  const a = lista.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    const t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
 }
 
 function construirMapas(hojas) {
@@ -170,11 +200,12 @@ function construirMapas(hojas) {
   });
 
   const mapaJugadores = {};
+  const rndJ = generador(SEMILLA + 1);
   let n = 0;
   Object.keys(mapaEquipos)
     .sort((a, b) => Number(mapaEquipos[a].split(' ')[1]) - Number(mapaEquipos[b].split(' ')[1]))
     .forEach(eq => {
-      const lista = [...(porEquipo[eq] || [])].sort((a, b) => a.localeCompare(b, 'es'));
+      const lista = mezclar([...(porEquipo[eq] || [])].sort((a, b) => a.localeCompare(b, 'es')), rndJ);
       lista.forEach(j => { if (!mapaJugadores[j]) mapaJugadores[j] = 'JUGADOR ' + (++n); });
     });
   /* Los que no quedaron atados a ningún equipo, al final. */

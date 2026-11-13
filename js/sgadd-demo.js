@@ -21,6 +21,8 @@
        resultado ya anonimizado.
 
    2 · LOS NÚMEROS NO SE TOCAN. Solo se reescriben los NOMBRES.
+       (La numeración de equipos y jugadores es aleatoria con semilla
+       fija, y los escudos son de OTRAS ligas: ver `logo()`.)
 
        El valor de la demo es que el dashboard se vea real: percentiles
        contra la liga, eFG%, PACE, arquetipos, bandas de desvío. Con
@@ -83,8 +85,122 @@ const SGADD_DEMO = (function () {
   /** El club que la demo fuerza. Lo lee `sgadd-club.js` al resolver el id. */
   function club() { return CLUB; }
 
-  /** El isotipo que reemplaza a TODOS los escudos mientras dure la demo. */
-  function logo() { return LOGO; }
+  /* =====================================================================
+     LOS ESCUDOS DE LA DEMO · reales, pero NUNCA el del equipo de los datos
+
+     Antes todos los equipos mostraban el isotipo de MotorStats. Una demo
+     con diecisiete cuadrados iguales no se parece a un panel de liga: el
+     entrenador quiere ver ESCUDOS. Pero un escudo real al lado de las
+     metricas de su club real seria exponer a ese club.
+
+     Por eso cada «EQUIPO N» recibe el escudo de un club de OTRA liga
+     (La Plata, Bahia Blanca, Liga Nacional), repartido con una semilla
+     fija: el mismo equipo conserva el mismo escudo en cada visita, y
+     ningun escudo corresponde al club cuyos numeros tiene al lado. Los
+     clubes de la Liga Argentina —de donde salen los datos— quedaron
+     afuera del reparto. Es la mezcla entre torneos que protege la
+     privacidad sin perder el aspecto de liga real.
+     ===================================================================== */
+  const ESCUDOS = [
+    'logos/la-plata/a-chascomus-a.webp',
+    'logos/la-plata/mayo.webp',
+    'logos/la-plata/astillero.webp',
+    'logos/la-plata/atenas.webp',
+    'logos/la-plata/banco.jfif',
+    'logos/la-plata/c-c-tolosano.webp',
+    'logos/la-plata/ceye.webp',
+    'logos/la-plata/gonnet.webp',
+    'logos/la-plata/circulo-marchigiano.webp',
+    'logos/la-plata/capital-chica.webp',
+    'logos/la-plata/villa-elisa.webp',
+    'logos/la-plata/deportivo-la-plata.webp',
+    'logos/la-plata/deportivo-san-vicente.webp',
+    'logos/la-plata/el-pato.webp',
+    'logos/la-plata/estrella.webp',
+    'logos/la-plata/estudiantes.webp',
+    'logos/la-plata/hogar.webp',
+    'logos/la-plata/juventud.webp',
+    'logos/la-plata/los-hornos.webp',
+    'logos/la-plata/meridiano.webp',
+    'logos/la-plata/nautico.webp',
+    'logos/la-plata/platense-a.webp',
+    'logos/la-plata/reconquista.webp',
+    'logos/la-plata/sud-america-lp.webp',
+    'logos/la-plata/unlp.webp',
+    'logos/la-plata/union-vecinal-a.webp',
+    'logos/la-plata/universal.avif',
+    'logos/la-plata/universitario.jfif',
+    'logos/la-plata/villa-san-carlos.webp',
+    'logos/bahia-blanca/bahiense-norte.webp',
+    'logos/bahia-blanca/barrio-hospital.webp',
+    'logos/bahia-blanca/estrella.webp',
+    'logos/bahia-blanca/estudiantes.webp',
+    'logos/bahia-blanca/independiente.webp',
+    'logos/bahia-blanca/leandro-alem.webp',
+    'logos/bahia-blanca/liniers.webp',
+    'logos/bahia-blanca/naposta.webp',
+    'logos/bahia-blanca/olimpo.webp',
+    'logos/bahia-blanca/pacifico.webp',
+    'logos/bahia-blanca/puyerredon.webp',
+    'logos/bahia-blanca/villa-mitre.webp',
+    'logos/liga-nacional/argentino-j.jpg',
+    'logos/liga-nacional/atenas-c.jpg',
+    'logos/liga-nacional/boca.jpg',
+    'logos/liga-nacional/ferro.jpg',
+    'logos/liga-nacional/gimnasia-cr.jpg',
+    'logos/liga-nacional/independiente-o.jpg',
+    'logos/liga-nacional/instituto.jpg',
+    'logos/liga-nacional/la-union-fsa.jpg',
+    'logos/liga-nacional/lanus.jpg',
+    'logos/liga-nacional/obera.jpg',
+    'logos/liga-nacional/olimpico-lb.jpg',
+    'logos/liga-nacional/penarol-mdp.jpg',
+    'logos/liga-nacional/platense.jpg',
+    'logos/liga-nacional/quimsa.jpg',
+    'logos/liga-nacional/racing-ch.jpg',
+    'logos/liga-nacional/regatas-c.jpg',
+    'logos/liga-nacional/san-lorenzo.jpg',
+    'logos/liga-nacional/san-martin-c.jpg'
+  ];
+  const SEMILLA_ESCUDOS = 20261114;
+
+  /* La misma mulberry32 de `generar-demo.js`: aleatoria para quien mira,
+     identica en cada carga. */
+  function generador(semilla) {
+    let a = semilla >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /** El orden del reparto: una permutacion fija de `ESCUDOS`. */
+  function repartoEscudos() {
+    const rnd = generador(SEMILLA_ESCUDOS);
+    const a = ESCUDOS.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      const t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  const REPARTO = repartoEscudos();
+
+  /**
+   * El escudo de un equipo de la demo. «EQUIPO 7» tiene SIEMPRE el mismo;
+   * dos equipos distintos no comparten escudo mientras haya de sobra
+   * (hay 59 para 17). Cualquier otro nombre —o ninguno— cae al isotipo.
+   */
+  function logo(nombre) {
+    const m = /^EQUIPO\s+(\d+)$/i.exec(String(nombre == null ? '' : nombre).trim());
+    if (!m) return LOGO;
+    const n = Number(m[1]);
+    if (!(n >= 1)) return LOGO;
+    return REPARTO[(n - 1) % REPARTO.length];
+  }
 
   function sesion() { return SESION; }
 
@@ -99,7 +215,59 @@ const SGADD_DEMO = (function () {
      El orden de `cols` es el contrato con `generar-demo.js`: acá se
      rehidrata con esos nombres. Hay un test que fija las dos mitades.
      =================================================================== */
-  function rehidratar(crudo) {
+  /* =====================================================================
+     LAS FECHAS DE LA DEMO SIEMPRE SON ACTUALES
+
+     El snapshot se generó con una temporada ya terminada. Un fixture o un
+     buzón que muestren partidos de hace un año se leen como un producto
+     abandonado, y la demo tiene que verse como la de un usuario ACTIVO.
+     Se corren TODAS las fechas el mismo número de días, de modo que el
+     último partido jugado cae AYER: no cambia ni un número, solo el
+     calendario.
+
+     GViz escribe las fechas como `Date(2025,9,31)` con el MES
+     0-INDEXADO (punto 3). Se trabaja sobre el texto y con `Date` local:
+     pasar por UTC corre el día en Argentina.
+     ===================================================================== */
+  const RE_FECHA = /^Date\((\d{4}),(\d{1,2}),(\d{1,2})\)$/;
+
+  function diaDeFecha(txt) {
+    const m = RE_FECHA.exec(String(txt));
+    return m ? new Date(Number(m[1]), Number(m[2]), Number(m[3])) : null;
+  }
+
+  function textoDeFecha(d) {
+    return 'Date(' + d.getFullYear() + ',' + d.getMonth() + ',' + d.getDate() + ')';
+  }
+
+  /** Cuántos días hay que correr el calendario para que el último partido
+   *  caiga ayer. PURA: recibe las hojas ya rehidratadas y `hoy`. */
+  function diasACorrer(hojas, hoy) {
+    let max = null;
+    Object.keys(hojas || {}).forEach(nombre => {
+      (hojas[nombre].filas || []).forEach(f => {
+        const d = diaDeFecha(f.FECHA);
+        if (d && (!max || d > max)) max = d;
+      });
+    });
+    if (!max) return 0;
+    const ayer = new Date((hoy || new Date()).getFullYear(), (hoy || new Date()).getMonth(),
+      (hoy || new Date()).getDate() - 1);
+    return Math.round((ayer - max) / 86400000);
+  }
+
+  function correrFechas(hojas, dias) {
+    if (!dias) return hojas;
+    Object.keys(hojas).forEach(nombre => {
+      hojas[nombre].filas.forEach(f => {
+        const d = diaDeFecha(f.FECHA);
+        if (d) f.FECHA = textoDeFecha(new Date(d.getFullYear(), d.getMonth(), d.getDate() + dias));
+      });
+    });
+    return hojas;
+  }
+
+  function rehidratar(crudo, opciones) {
     const hojas = {};
     Object.keys(crudo.hojas || {}).forEach(nombre => {
       const h = crudo.hojas[nombre];
@@ -113,6 +281,7 @@ const SGADD_DEMO = (function () {
         }),
       };
     });
+    if (opciones && opciones.hoy) correrFechas(hojas, diasACorrer(hojas, opciones.hoy));
     return hojas;
   }
 
@@ -129,7 +298,7 @@ const SGADD_DEMO = (function () {
         return r.json();
       })
       .then(crudo => {
-        estado.hojas = rehidratar(crudo);
+        estado.hojas = rehidratar(crudo, { hoy: new Date() });
         return {
           hojas: estado.hojas,
           errores: [],
@@ -153,6 +322,155 @@ const SGADD_DEMO = (function () {
   }
 
   /* ===================================================================
+     LA LIGA DE REFERENCIA · «según el torneo que elijas»
+
+     Los logos de la landing llevan a `?demo=1&liga=lnb|lab|apb|abb`. Los
+     datos son siempre los mismos diecisiete equipos anónimos, pero la
+     demo se arma con la ESTRUCTURA de la competencia elegida: las zonas
+     de la tabla (directo a cuartos, reclasificación, play-in, descenso…)
+     y el nombre. Es lo que el entrenador reconoce de su torneo sin que
+     ningún dato real salga a la luz.
+
+     SON DE REFERENCIA Y LA DEMO LO DICE. Las zonas de LNB y LAB salen de
+     lo que declaran los archivos de `torneos/`; las de Bahía, del
+     reglamento que publicó la ABB; la de APdeB, que no publicó
+     reglamento, es una zona única de playoffs. Con 17 equipos en vez de
+     los 18, 17 o 12 reales, los cortes negativos (`-2`) siguen cayendo en
+     los dos últimos.
+     =================================================================== */
+  const LIGAS_DEMO = {
+    lnb: {
+      nombre: 'Liga Nacional', corto: 'LNB',
+      zonas: [
+        { id: 'directos', desde: 1, hasta: 4, label: 'Directo a cuartos', tono: 'exito' },
+        { id: 'reclasificacion', desde: 5, hasta: 12, label: 'Reclasificación', tono: 'aviso' },
+        { id: 'playout', desde: -2, label: 'Play Out (descenso)', tono: 'peligro' },
+      ],
+    },
+    lab: {
+      nombre: 'Liga Argentina', corto: 'LAB',
+      zonas: [
+        { id: 'directos', desde: 1, hasta: 4, label: 'Directo a octavos', tono: 'exito' },
+        { id: 'reclasificacion', desde: 5, hasta: 12, label: 'Reclasificación', tono: 'aviso' },
+      ],
+    },
+    apb: {
+      nombre: 'Asociación Platense', corto: 'APdeB',
+      zonas: [
+        { id: 'playoffs', desde: 1, hasta: 8, label: 'Clasifica a playoffs', tono: 'exito' },
+      ],
+    },
+    abb: {
+      nombre: 'Bahía Blanca', corto: 'ABB',
+      zonas: [
+        { id: 'cuartos', desde: 1, hasta: 6, label: 'Cuartos de final', tono: 'exito' },
+        { id: 'playin', desde: 7, hasta: 10, label: 'Play-In', tono: 'aviso' },
+        { id: 'permanencia', desde: -2, label: 'Permanencia', tono: 'peligro' },
+      ],
+    },
+  };
+  const LIGA_DEFECTO = 'lnb';
+
+  /** La liga que pide la URL (`?liga=`); una desconocida cae a la de
+   *  defecto en vez de dejar la demo sin estructura. */
+  function ligaId(busqueda) {
+    let q = busqueda;
+    if (q === undefined) {
+      if (typeof window === 'undefined' || !window.location) return LIGA_DEFECTO;
+      q = window.location.search || '';
+    }
+    const m = /(^|[?&])liga=([a-z]+)(&|$)/.exec(String(q));
+    return (m && Object.prototype.hasOwnProperty.call(LIGAS_DEMO, m[2])) ? m[2] : LIGA_DEFECTO;
+  }
+
+  function ligaDemo(id) { return LIGAS_DEMO[id || ligaId()] || LIGAS_DEMO[LIGA_DEFECTO]; }
+
+  /**
+   * El bloque `competencia` de la demo: UN formato con las zonas de la
+   * liga elegida, para el tramo que sea (`*`). Mismo schema que lee
+   * `SGADD_CONFIG.parsear`, así que la tabla de posiciones pinta sus
+   * zonas y su leyenda sin ningún camino especial.
+   */
+  function competencia(id) {
+    const l = ligaDemo(id);
+    return {
+      ordenTabla: ['PCT', 'DIF', 'PF'],
+      formatos: {
+        referencia: { label: l.nombre + ' · estructura de referencia', equiposEsperados: 17, zonas: l.zonas },
+      },
+      porTramo: { '*': 'referencia' },
+    };
+  }
+
+  /**
+   * Toma el JSON del club `demo` y lo deja con la liga elegida: nombre de
+   * la categoría, zonas de la tabla y el enganche a un torneo de muestra
+   * (que es lo que habilita la sección Fixture). Devuelve una COPIA.
+   */
+  function adaptarConfig(cfg, id) {
+    if (!cfg) return cfg;
+    const l = ligaDemo(id);
+    const out = JSON.parse(JSON.stringify(cfg));
+    out.competencia = competencia(id);
+    (out.planillas || []).forEach(p => {
+      p.label = l.nombre + ' · Temporada de muestra';
+      p.torneoId = 'demo';
+      p.zonaId = 'general';
+    });
+    return out;
+  }
+
+  /* El calendario que viene. SIEMPRE hacia adelante desde hoy, con la
+     misma semilla: tres jornadas, ocho partidos por jornada (con 17
+     equipos uno descansa) y EQUIPO 1 juega en todas, que es lo que
+     alimenta el «próximo rival» y el mes del Fixture. */
+  function calendarioFuturo(hoy) {
+    const base = hoy || new Date();
+    const rnd = generador(SEMILLA_ESCUDOS + 7);
+    const dos = n => (n < 10 ? '0' : '') + n;
+    const iso = d => d.getFullYear() + '-' + dos(d.getMonth() + 1) + '-' + dos(d.getDate());
+    const nombres = Array.from({ length: 17 }, (_, i) => 'EQUIPO ' + (i + 1));
+    const partidos = [];
+    for (let j = 0; j < 3; j++) {
+      const lista = nombres.slice(1);
+      for (let i = lista.length - 1; i > 0; i--) {
+        const k = Math.floor(rnd() * (i + 1)); const t = lista[i]; lista[i] = lista[k]; lista[k] = t;
+      }
+      const orden = ['EQUIPO 1'].concat(lista);          // el último descansa, nunca EQUIPO 1
+      for (let m = 0; m < 8; m++) {
+        const dia = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 2 + j * 7 + (m % 2));
+        const local = (j + m) % 2 === 0 ? orden[m * 2] : orden[m * 2 + 1];
+        const visita = local === orden[m * 2] ? orden[m * 2 + 1] : orden[m * 2];
+        partidos.push({ fecha: iso(dia), hora: (m % 4 < 2) ? '19:00' : '21:15', local: local, visitante: visita, zona: 'general' });
+      }
+    }
+    return partidos;
+  }
+
+  /** El «archivo del torneo» de la demo: lo lee `SGADD_FIXTURE.cargarTorneo`
+   *  en vez de pedir `torneos/demo.json`, que no existe ni debe existir. */
+  function torneo(id, hoy) {
+    const l = ligaDemo(id);
+    return {
+      id: 'demo',
+      nombre: 'Torneo de muestra',
+      temporada: 'Muestra',
+      nivel: 'LIGA_ARGENTINA',
+      formato: {
+        equiposPorZona: 17, modalidad: 'Todos contra todos, ida y vuelta',
+        fases: [{ id: 'regular', label: 'Fase regular', cruce: 'zona' }],
+      },
+      zonas: {
+        general: {
+          slug: 'demo', label: l.nombre,
+          equipos: Array.from({ length: 17 }, (_, i) => ({ id: i + 1, nombre: 'EQUIPO ' + (i + 1) })),
+        },
+      },
+      calendario: { fuente: 'Datos de referencia', partidos: calendarioFuturo(hoy) },
+    };
+  }
+
+  /* ===================================================================
      EL BANNER
 
      Va FIJO arriba y con su propio alto reservado en el `<body>`: un
@@ -166,9 +484,10 @@ const SGADD_DEMO = (function () {
     return '<div class="demo-barra no-imprimir" role="region" aria-label="Demo pública">'
       + '<span class="demo-barra-txt">'
       + '<strong class="demo-barra-plan">Plan Plata</strong> · '
-      + 'Estás explorando con datos anónimos de muestra. '
-      + '<span class="demo-barra-pregunta">¿Querés ver cómo se ve el dashboard '
-      + 'con las estadísticas de tu equipo?</span>'
+      + 'Datos de referencia: los equipos, los números y los escudos están mezclados '
+      + 'de distintas ligas. Navegá toda la plataforma. '
+      + '<span class="demo-barra-pregunta">¿Querés ver los datos de tu equipo? '
+      + 'Agendá tu demo por WhatsApp.</span>'
       + '</span>'
       /* LA SALIDA VA ANTES DEL CTA, y en outline. Dos motivos:
 
@@ -329,16 +648,17 @@ const SGADD_DEMO = (function () {
      mensaje: es la unica diferencia entre los dos origenes, asi que
      duplicar el modal para la landing seria mantener dos formularios
      que se desincronizan (punto 8). */
-  const contexto = { plan: null };
+  const contexto = { plan: null, servicio: null };
 
   function modal() {
     const plan = contexto.plan;
+    const servicio = contexto.servicio;
     return `
       <div class="login-fondo" id="demoModal" role="dialog" aria-modal="true"
            aria-labelledby="demoModalTitulo">
         <div class="login-caja card rounded-xl p-5 border border-hairline">
           <h2 id="demoModalTitulo" class="font-display uppercase tracking-wide text-base text-ink mb-1">
-            ${plan ? 'Consultar por el plan ' + esc(plan) : 'Agendar demo con mis datos'}</h2>
+            ${servicio ? 'Consultar: ' + esc(servicio) : (plan ? 'Consultar por el plan ' + esc(plan) : 'Agendar demo con mis datos')}</h2>
           <p class="text-xs text-muted mb-4 leading-relaxed">
             Te armamos el panel con los box scores de tu equipo. Contanos
             quién sos y de dónde, y seguimos por WhatsApp.
@@ -419,6 +739,7 @@ const SGADD_DEMO = (function () {
     if (typeof document === 'undefined') return;
     if (document.getElementById('demoModal')) return;
     contexto.plan = (opciones && opciones.plan) ? String(opciones.plan) : null;
+    contexto.servicio = (opciones && opciones.servicio) ? String(opciones.servicio) : null;
     disparador = document.activeElement;
     const n = document.createElement('div');
     n.id = 'demoModalHost';
@@ -441,7 +762,7 @@ const SGADD_DEMO = (function () {
     const n = document.getElementById('demoModalHost');
     if (n) n.remove();
     document.removeEventListener('keydown', escapar);
-    contexto.plan = null;
+    contexto.plan = null; contexto.servicio = null;
     if (disparador && disparador.focus) disparador.focus();
     disparador = null;
   }
@@ -503,9 +824,12 @@ const SGADD_DEMO = (function () {
        entrado nunca a la demo— le escribiria al club «probé la demo», y
        el que atiende el WhatsApp arranca la conversacion con un dato
        falso. El resto del mensaje es identico en los dos casos. */
-    const cabeza = plan
-      ? 'Hola MotorStats, quiero consultar por el plan ' + plan + '.'
-      : 'Hola MotorStats, probé la demo.';
+    const servicio = t(d.servicio);
+    const cabeza = servicio
+      ? 'Hola MotorStats, quiero consultar por: ' + servicio + '.'
+      : (plan
+        ? 'Hola MotorStats, quiero consultar por el plan ' + plan + '.'
+        : 'Hola MotorStats, probé la demo.');
     /* LA UBICACION SE ARMA CON LO QUE HAYA. El formulario exige los dos
        datos, pero la funcion es pura y se llama tambien sin formulario:
        un «de la ciudad de , » colgado es peor que no nombrar el lugar. */
@@ -579,6 +903,7 @@ const SGADD_DEMO = (function () {
       pais: paisElegido(), ciudad: valor('demoCiudad'),
       paisOtro: valor('demoPais') === OTRO_PAIS,
       plan: contexto.plan,
+      servicio: contexto.servicio,
     };
     const falta = faltantes(datos);
     if (falta.length) {
@@ -622,7 +947,8 @@ const SGADD_DEMO = (function () {
   iniciar();
 
   return {
-    activo, club, logo, sesion, cargarCategoria, rehidratar,
+    activo, club, logo, sesion, ESCUDOS, REPARTO, LIGAS_DEMO, LIGA_DEFECTO, ligaId, ligaDemo,
+    competencia, adaptarConfig, torneo, calendarioFuturo, diasACorrer, correrFechas, diaDeFecha, cargarCategoria, rehidratar,
     banner, montarBanner, reservarAlto, vigilarAlto, modal, abrirModal, cerrarModal, enviar,
     paisCambio, faltantes, avisoFaltantes, ciudadesDe, ROLES,
     mensaje, enlace, EQUIPO, DATOS, WHATSAPP, SESION, INICIO, PAISES, PAIS_DEFECTO,

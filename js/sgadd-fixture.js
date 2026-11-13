@@ -795,6 +795,15 @@ const SGADD_FIXTURE = (function () {
    */
   function cargarTorneo(id) {
     if (!id) return Promise.resolve(null);
+    /* EN LA DEMO EL TORNEO ES DE MUESTRA y se arma en el momento: sus
+       partidos son siempre de los próximos días. Un archivo estático
+       quedaría vencido en una semana y el Fixture se vería abandonado. */
+    if (id === 'demo' && typeof SGADD_DEMO !== 'undefined' && SGADD_DEMO.activo && SGADD_DEMO.activo()) {
+      if (estado.torneo !== id || estado.doc === null) {
+        estado.torneo = id; estado.doc = SGADD_DEMO.torneo(); estado.pidiendo = null; estado.error = '';
+      }
+      return Promise.resolve(estado.doc);
+    }
     if (estado.torneo === id && estado.doc !== null) return Promise.resolve(estado.doc);
     if (estado.pidiendo && estado.pidiendo.id === id) return estado.pidiendo.promesa;
     const promesa = fetch(BASE + 'torneos/' + encodeURIComponent(id) + '.json', { cache: 'no-cache' })

@@ -902,6 +902,144 @@
     outline: 2px solid var(--acento, #f7941e); outline-offset: 2px;
   }
 
+  /* =====================================================================
+     EL HERO DE LA LANDING · qué hacemos, qué dolor resolvemos, cómo
+
+     A mano y no en Tailwind: lo arma `sgadd-landing.js` en runtime y el
+     scan del CSS compilado es estático (punto 5 bis / 12). Sin `sm:`/`md:`
+     de Tailwind, entonces `sgadd.css` no necesita regenerarse.
+     ===================================================================== */
+  .hero-landing { text-align: left; }
+  .hero-marca {
+    display: flex; align-items: center; gap: .6rem;
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #a3a3a3;
+  }
+  .hero-logo { width: 40px; height: 40px; flex: none; }
+  .hero-titulo {
+    margin: .9rem 0 0; font-family: 'Barlow Condensed', 'Barlow', sans-serif;
+    font-weight: 800; text-transform: uppercase; letter-spacing: .01em;
+    font-size: clamp(1.7rem, 5.4vw, 2.7rem); line-height: 1.05; color: #f5f4f2;
+  }
+  .hero-resalte { color: var(--acento-texto, #f7941e); }
+  .hero-sub { margin: .8rem 0 0; max-width: 62ch; font-size: 15px; line-height: 1.5; color: #cfcbc6; }
+  .hero-landing .hero-acciones { justify-content: flex-start; }
+  .hero-micro { margin: .7rem 0 0; font-size: 11px; color: #a3a3a3; max-width: 62ch; }
+  .hero-pares { display: grid; grid-template-columns: 1fr; gap: .75rem; margin-top: 1.5rem; }
+  @media screen and (min-width: 820px) { .hero-pares { grid-template-columns: 1fr 1fr; } }
+  .hero-par {
+    display: flex; flex-direction: column; gap: .5rem; min-width: 0;
+    padding: .9rem 1rem; border-radius: .6rem;
+    background: var(--surface2, #1c1c1c); border: 1px solid #2c2c2c;
+  }
+  .hero-hoy, .hero-con { margin: 0; font-size: 13px; line-height: 1.45; }
+  .hero-hoy { color: #b4b0ab; }
+  .hero-con { color: #f5f4f2; }
+  .hero-tag {
+    display: inline-block; margin-right: .5rem; padding: .05rem .4rem; border-radius: .3rem;
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    background: #2c2c2c; color: #d6d2cc;
+  }
+  /* «Con MotorStats» lleva la marca ✓ ademas del color: el que no
+     distingue los tonos igual lee cual es el problema y cual la salida. */
+  .hero-tag-ok { background: var(--acento-fondo, #f7941e); color: #0B1121; }
+  .hero-tag-ok::before { content: "\2713\00a0"; }
+
+  /* LOS LOGOS DE LAS LIGAS. En escala de grises y con poco brillo; vuelven
+     al color original al pasar el mouse o al enfocarlos con el teclado.
+     SOLO bajo `(hover: hover)`: en el telefono no hay hover y un logo
+     gris que nunca se enciende se lee como «deshabilitado». */
+  .liga-tira { text-align: center; padding: 1.2rem 0 .4rem; }
+  .liga-tira-t { margin: 0 0 .9rem; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #a3a3a3; }
+  .liga-tira-n { margin: .9rem 0 0; font-size: 11px; color: #a3a3a3; }
+  .liga-lista {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem 1.6rem;
+  }
+  .liga-logo {
+    display: flex; flex-direction: column; align-items: center; gap: .45rem;
+    width: 130px; text-decoration: none; color: #cfcbc6; border-radius: .6rem;
+  }
+  /* SIN CONTENEDOR: el logo va suelto sobre el fondo, en una caja de alto
+     fijo para que los cuatro queden a la misma altura aunque sus
+     proporciones difieran. En gris y con poco brillo hasta el hover. */
+  .liga-logo img {
+    display: block; height: 72px; width: auto; max-width: 120px; object-fit: contain; border-radius: .5rem;
+    transition: filter .25s ease, opacity .25s ease, transform .2s ease;
+  }
+  .liga-nombre { font-size: 12px; font-weight: 600; line-height: 1.2; }
+  .liga-sub { font-size: 10px; color: #a3a3a3; letter-spacing: .06em; text-transform: uppercase; }
+  .liga-tira-n strong { color: #e8e6e3; font-weight: 600; }
+  @media screen and (hover: hover) {
+    .liga-logo img { filter: grayscale(1); opacity: .6; }
+    .liga-logo:hover img, .liga-logo:focus-visible img { filter: none; opacity: 1; transform: translateY(-2px); }
+  }
+  .liga-logo:focus-visible { outline: 2px solid var(--acento, #f7941e); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) { .liga-logo img { transition: none; } }
+  @media print { .hero-landing, .liga-tira, .exp-grid, .medida-seccion { display: none !important; } }
+
+  /* BENEFICIOS y LA JUGADA. */
+  .hero-quote strong { color: #f5f4f2; font-size: 1.05em; }
+  .ben-card { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; padding: .75rem .8rem; border-radius: .7rem; background: rgba(247,148,30,.07); border: 1px solid rgba(247,148,30,.28); }
+  .ben-chip { display: inline-flex; align-items: center; gap: .4rem; padding: .35rem .7rem; border-radius: 999px; background: #1c1c1c; border: 1px solid #3a3a3a; font-size: 13px; font-weight: 600; color: #f5f4f2; }
+  .ben-ok { display: inline-grid; place-items: center; width: 1.1rem; height: 1.1rem; border-radius: 50%; font-size: 10px; background: var(--acento-fondo, #f7941e); color: #0B1121; }
+  .jug { list-style: none; margin: 1rem 0 0; padding: 1rem .8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem .6rem; border-radius: .8rem; border: 1px solid #2c2c2c;
+    background: var(--surface2, #1c1c1c); }
+  .jug-p { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: .3rem; min-width: 0; }
+  .jug-n { display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: 50%; font-family: 'Barlow Condensed', 'Barlow', sans-serif; font-weight: 800; font-size: 1.25rem; color: #0B1121; background: var(--acento-fondo, #f7941e); box-shadow: 0 0 0 3px rgba(247,148,30,.25); }
+  .jug-p:last-child .jug-n { background: #f5f4f2; box-shadow: 0 0 0 3px rgba(245,244,242,.25); }
+  .jug-t { font-family: 'Barlow Condensed', 'Barlow', sans-serif; font-weight: 800; font-size: 1.15rem; letter-spacing: .06em; text-transform: uppercase; color: #f5f4f2; line-height: 1.1; }
+  .jug-d { font-size: 12px; line-height: 1.4; color: #b4b0ab; max-width: 24ch; }
+  .jug-fl { display: none; }
+  @media screen and (min-width: 820px) {
+    .jug { grid-template-columns: repeat(4, 1fr); gap: 0 1.4rem; }
+    .jug-fl { display: block; position: absolute; top: 1.2rem; left: calc(50% + 2rem); width: calc(100% - 2.8rem); height: 0; border-top: 2px dashed rgba(247,148,30,.7); }
+    .jug-fl::after { content: ""; position: absolute; right: -1px; top: -6px; border-left: 9px solid rgba(247,148,30,.9); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+  }
+  .exp-uno { grid-template-columns: 1fr !important; }
+  @media print { .ben-card, .jug { display: none !important; } }
+
+  /* «NO HACE FALTA SER EXPERTO» y la cita de la marca. */
+  .exp-grid { display: grid; grid-template-columns: 1fr; gap: .9rem; margin-top: 1rem; }
+  @media screen and (min-width: 820px) { .exp-grid { grid-template-columns: 1fr 1fr; } }
+  .exp-card {
+    position: relative; padding: 1.2rem 1.3rem; border-radius: .8rem; min-width: 0;
+    background: var(--surface, #141414); border: 1px solid #2c2c2c;
+  }
+  .exp-eyebrow {
+    margin: 0 0 .5rem; font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--acento-texto, #f7941e);
+  }
+  .exp-eyebrow::before { content: "\2014\00a0"; }
+  .exp-t { margin: 0 0 .6rem; font-family: 'Barlow Condensed', 'Barlow', sans-serif; font-weight: 800; font-size: 1.5rem; line-height: 1.1; color: #f5f4f2; }
+  .exp-d { margin: 0 0 .55rem; font-size: 13px; line-height: 1.55; color: #b4b0ab; }
+  .exp-cita { background: #17325e; border-color: #2a4a80; border-left: 4px solid var(--acento, #f7941e); }
+  .exp-cita .exp-eyebrow { text-transform: none; letter-spacing: 0; font-size: 15px; }
+  .exp-cita .exp-eyebrow::before { content: ""; }
+  .exp-cita-t { margin: 0; font-size: 15px; line-height: 1.55; font-style: italic; color: #e8edf7; }
+  .exp-comilla { position: absolute; right: 1rem; top: .2rem; font-size: 3rem; line-height: 1; color: #6f86ad; }
+
+  /* A MEDIDA. Las dos primeras (lo continuo) destacan; los servicios
+     puntuales van en una grilla chica abajo. Sin precio en ninguna. */
+  .medida-grid { display: grid; grid-template-columns: 1fr; gap: .75rem; }
+  @media screen and (min-width: 700px) { .medida-grid { grid-template-columns: 1fr 1fr; } .medida-grid-2 { grid-template-columns: 1fr 1fr; } }
+  @media screen and (min-width: 1100px) { .medida-grid:not(.medida-grid-2) { grid-template-columns: repeat(4, 1fr); } }
+  .medida-card {
+    display: flex; flex-direction: column; gap: .5rem; min-width: 0;
+    padding: 1rem 1.1rem; border-radius: .7rem; background: var(--surface2, #1c1c1c); border: 1px solid #2c2c2c;
+  }
+  .medida-pop { border-color: var(--acento, #f7941e); }
+  .medida-t { margin: 0; font-size: 14px; font-weight: 700; color: #f5f4f2; }
+  .medida-d { margin: 0; font-size: 12px; line-height: 1.5; color: #b4b0ab; flex: 1; }
+  .medida-sub { margin: 1.3rem 0 .6rem; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #a3a3a3; font-weight: 700; }
+  .medida-cta {
+    align-self: flex-start; min-height: 40px; padding: .45rem .9rem; border-radius: .45rem; cursor: pointer;
+    font-family: inherit; font-size: 12px; font-weight: 600; background: transparent; color: #e8e6e3; border: 1px solid #4a4a4a;
+  }
+  .medida-pop .medida-cta { background: var(--acento-fondo, #f7941e); color: #0B1121; border-color: transparent; }
+  .medida-cta:hover { border-color: var(--acento, #f7941e); }
+  .medida-link { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; color: var(--acento-texto, #f7941e); text-decoration: underline; }
+  .medida-cta:focus-visible, .medida-link:focus-visible { outline: 2px solid var(--acento, #f7941e); outline-offset: 2px; }
+
   /* EL PIE INSTITUCIONAL. Va a mano por lo mismo que el resto: lo inyecta
      un nodo dinamico y el scan de Tailwind es ESTATICO. */
   /* ===================================================================
@@ -1025,6 +1163,104 @@
 
   /* En papel la demo no existe: son controles comerciales. */
   @media print { .demo-barra, #demoModalHost { display: none !important; } }
+
+  /* =====================================================================
+     EL RECORRIDO GUIADO DE LA DEMO (`sgadd-tour.js`)
+
+     NUNCA MODAL: el oscurecido va con `pointer-events: none`, asi que el
+     panel sigue usandose con la guia abierta. El foco es un hueco en una
+     sombra enorme (`box-shadow` de 9999px), que no necesita capas ni
+     recortes. Va a mano porque son nodos inyectados (punto 5 bis / 12).
+     Z-index: arriba de la barra de la demo (60) y del «subir» (45).
+     ===================================================================== */
+  .tour-foco {
+    position: fixed; z-index: 70; pointer-events: none; border-radius: .7rem;
+    box-shadow: 0 0 0 9999px rgba(6, 10, 22, .66), 0 0 0 2px var(--acento, #f7941e);
+    transition: top .25s ease, left .25s ease, width .25s ease, height .25s ease;
+  }
+  .tour-hover {
+    position: fixed; z-index: 69; pointer-events: none; border-radius: .6rem;
+    border: 2px dashed var(--acento, #f7941e); background: rgba(247, 148, 30, .08);
+  }
+  .tour-card {
+    position: fixed; z-index: 72; width: min(340px, calc(100vw - 24px));
+    padding: .95rem 1rem; border-radius: .7rem;
+    background: #1b1b1b; color: #f5f4f2; border: 1px solid var(--acento, #f7941e);
+    box-shadow: 0 12px 34px rgba(0, 0, 0, .55);
+  }
+  .tour-card[hidden], .tour-oferta[hidden], .tour-menu[hidden], .tour-foco[hidden], .tour-hover[hidden] { display: none; }
+  .tour-card-final { right: 1rem; bottom: 4.6rem; top: auto !important; left: auto !important; }
+  .tour-card-n { margin: 0; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: #a3a3a3; }
+  .tour-card-t { margin: .25rem 0 0; font-size: 15px; font-weight: 700; line-height: 1.25; }
+  .tour-card-x { margin: .4rem 0 0; font-size: 13px; line-height: 1.5; color: #d6d2cc; }
+  .tour-card-b { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: .8rem; }
+  .tour-btn {
+    min-height: 36px; padding: .4rem .8rem; border-radius: .45rem; cursor: pointer;
+    font-family: inherit; font-size: 12px; font-weight: 600;
+    background: transparent; color: #e8e6e3; border: 1px solid #4a4a4a;
+  }
+  .tour-btn:hover:not([disabled]) { border-color: var(--acento, #f7941e); }
+  .tour-btn[disabled] { opacity: .4; cursor: default; }
+  .tour-btn-pri { background: var(--acento-fondo, #f7941e); color: #0B1121; border-color: transparent; }
+  .tour-btn-link { margin-left: auto; border-color: transparent; color: #a3a3a3; text-decoration: underline; }
+  .tour-btn:focus-visible, .tour-boton:focus-visible, .tour-item:focus-visible {
+    outline: 2px solid var(--acento, #f7941e); outline-offset: 2px;
+  }
+
+  /* EL OFRECIMIENTO. Chico, abajo a la derecha, sin tapar el contenido, y
+     se va solo. «Ahora no» lo descarta para esa seccion. */
+  .tour-oferta {
+    position: fixed; z-index: 71; right: 1rem; bottom: 4.6rem; width: min(330px, calc(100vw - 24px));
+    padding: .8rem .9rem; border-radius: .7rem;
+    background: #1b1b1b; color: #f5f4f2; border: 1px solid #3a3a3a;
+    box-shadow: 0 8px 26px rgba(0, 0, 0, .5);
+  }
+  .tour-oferta-t { margin: 0; font-size: 13px; line-height: 1.4; }
+  .tour-oferta-t span { display: block; margin-top: .2rem; font-size: 12px; color: #b4b0ab; }
+  .tour-oferta-b { display: flex; gap: .5rem; margin-top: .7rem; }
+
+  /* EL BOTON SIEMPRE A LA VISTA, al lado del «volver arriba». */
+  .tour-boton {
+    position: fixed; z-index: 71; right: 4.6rem; bottom: 1rem;
+    display: inline-flex; align-items: center; gap: .45rem; min-height: 44px;
+    padding: .5rem .9rem; border-radius: 999px; cursor: pointer;
+    font-family: inherit; font-size: 12px; font-weight: 700;
+    background: #1b1b1b; color: #f5f4f2; border: 1px solid var(--acento, #f7941e);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .45);
+  }
+  .tour-boton > span:first-child {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 999px;
+    background: var(--acento-fondo, #f7941e); color: #0B1121; font-size: 12px;
+  }
+  .tour-boton-on { background: var(--acento-fondo, #f7941e); color: #0B1121; }
+  .tour-boton-on > span:first-child { background: #0B1121; color: var(--acento-fondo, #f7941e); }
+  .tour-menu {
+    position: fixed; z-index: 72; right: 4.6rem; bottom: 4.2rem; width: min(320px, calc(100vw - 24px));
+    padding: .4rem; border-radius: .7rem; background: #1b1b1b; border: 1px solid #3a3a3a;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, .55);
+  }
+  .tour-item {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    padding: .6rem .7rem; border-radius: .5rem; border: 0; background: transparent;
+    font-family: inherit; color: #f5f4f2;
+  }
+  .tour-item:hover { background: #262626; }
+  .tour-item strong { display: block; font-size: 13px; }
+  .tour-item span { display: block; margin-top: .15rem; font-size: 11px; line-height: 1.4; color: #a3a3a3; }
+  .tour-item-n { margin: 0; padding: .6rem .7rem; font-size: 12px; color: #a3a3a3; }
+  body.tour-ayuda { cursor: help; }
+
+  /* En el telefono la tarjeta es una hoja abajo (la posicion se calcula
+     para escritorio) y el boton pierde la palabra para no tapar la tabla. */
+  @media screen and (max-width: 639px) {
+    .tour-card { left: .75rem !important; right: .75rem !important; width: auto; top: auto !important; bottom: .75rem; }
+    .tour-oferta { right: .75rem; left: .75rem; width: auto; bottom: 4.4rem; }
+    .tour-boton { right: 4.2rem; bottom: .75rem; }
+    .tour-menu { right: .75rem; left: .75rem; width: auto; bottom: 4rem; }
+  }
+  @media (prefers-reduced-motion: reduce) { .tour-foco { transition: none; } }
+  @media print { #tourHost { display: none !important; } }
 
   .pie-motorstats { display: none; }
   /* La tabla que firma cada hoja. En pantalla el contenedor de salida ya
@@ -3609,7 +3845,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=371" />
+<link rel="stylesheet" href="sgadd.css?v=382" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -3815,65 +4051,66 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=371"></script>
+<script src="js/sgadd-club.js?v=382"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=371"></script>
-<script src="js/sgadd-core.js?v=371"></script>
-<script src="js/sgadd-auth.js?v=371"></script>
+<script src="js/sgadd-config.js?v=382"></script>
+<script src="js/sgadd-core.js?v=382"></script>
+<script src="js/sgadd-auth.js?v=382"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=371"></script>
-<script src="js/sgadd-glosario.js?v=371"></script>
-<script src="js/sgadd-glosarioui.js?v=371"></script>
-<script src="js/sgadd-comparativa.js?v=371"></script>
-<script src="js/sgadd-comparativaui.js?v=371"></script>
-<script src="js/sgadd-confirmar.js?v=371"></script>
-<script src="js/sgadd-landing.js?v=371"></script>
-<script src="js/sgadd-login.js?v=371"></script>
-<script src="js/sgadd-data.js?v=371"></script>
-<script src="js/sgadd-clientes.js?v=371"></script>
-<script src="js/sgadd-ui.js?v=371"></script>
-<script src="js/sgadd-muestra.js?v=371"></script>
-<script src="js/sgadd-app.js?v=371"></script>
-<script src="js/sgadd-clasificacion.js?v=371"></script>
+<script src="js/sgadd-demo.js?v=382"></script>
+<script src="js/sgadd-tour.js?v=382"></script>
+<script src="js/sgadd-glosario.js?v=382"></script>
+<script src="js/sgadd-glosarioui.js?v=382"></script>
+<script src="js/sgadd-comparativa.js?v=382"></script>
+<script src="js/sgadd-comparativaui.js?v=382"></script>
+<script src="js/sgadd-confirmar.js?v=382"></script>
+<script src="js/sgadd-landing.js?v=382"></script>
+<script src="js/sgadd-login.js?v=382"></script>
+<script src="js/sgadd-data.js?v=382"></script>
+<script src="js/sgadd-clientes.js?v=382"></script>
+<script src="js/sgadd-ui.js?v=382"></script>
+<script src="js/sgadd-muestra.js?v=382"></script>
+<script src="js/sgadd-app.js?v=382"></script>
+<script src="js/sgadd-clasificacion.js?v=382"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=371"></script>
-<script src="js/sgadd-inscriptos.js?v=371"></script>
-<script src="js/sgadd-fases.js?v=371"></script>
-<script src="js/sgadd-torneos.js?v=371"></script>
-<script src="js/sgadd-hub.js?v=371"></script>
-<script src="js/sgadd-configui.js?v=371"></script>
-<script src="js/sgadd-estados.js?v=371"></script>
-<script src="js/sgadd-buzon.js?v=371"></script>
-<script src="js/sgadd-charts.js?v=371"></script>
-<script src="js/sgadd-personalidad.js?v=371"></script>
-<script src="js/sgadd-rankings.js?v=371"></script>
-<script src="js/sgadd-partido.js?v=371"></script>
-<script src="js/sgadd-informe.js?v=371"></script>
-<script src="js/sgadd-ficha.js?v=371"></script>
-<script src="js/sgadd-mercado.js?v=371"></script>
-<script src="js/sgadd-fichajes.js?v=371"></script>
-  <script src="js/sgadd-rankingpdf.js?v=371"></script>
-<script src="js/sgadd-equipos.js?v=371"></script>
+<script src="js/sgadd-fixture.js?v=382"></script>
+<script src="js/sgadd-inscriptos.js?v=382"></script>
+<script src="js/sgadd-fases.js?v=382"></script>
+<script src="js/sgadd-torneos.js?v=382"></script>
+<script src="js/sgadd-hub.js?v=382"></script>
+<script src="js/sgadd-configui.js?v=382"></script>
+<script src="js/sgadd-estados.js?v=382"></script>
+<script src="js/sgadd-buzon.js?v=382"></script>
+<script src="js/sgadd-charts.js?v=382"></script>
+<script src="js/sgadd-personalidad.js?v=382"></script>
+<script src="js/sgadd-rankings.js?v=382"></script>
+<script src="js/sgadd-partido.js?v=382"></script>
+<script src="js/sgadd-informe.js?v=382"></script>
+<script src="js/sgadd-ficha.js?v=382"></script>
+<script src="js/sgadd-mercado.js?v=382"></script>
+<script src="js/sgadd-fichajes.js?v=382"></script>
+  <script src="js/sgadd-rankingpdf.js?v=382"></script>
+<script src="js/sgadd-equipos.js?v=382"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=371"></script>
-<script src="js/sgadd-rachas.js?v=371"></script>
-<script src="js/sgadd-jugadores.js?v=371"></script>
-<script src="js/sgadd-4factores.js?v=371"></script>
-<script src="js/sgadd-predicciones.js?v=371"></script>
-<script src="js/sgadd-scouting.js?v=371"></script>
-<script src="js/sgadd-cancha.js?v=371"></script>
-<script src="js/sgadd-ciclos.js?v=371"></script>
-<script src="js/sgadd-escalones.js?v=371"></script>
-<script src="js/sgadd-pwa.js?v=371"></script>
-<script src="js/sgadd-cicloinforme.js?v=371"></script>
-<script src="js/sgadd-ciclosui.js?v=371"></script>
-<script src="js/sgadd-ciclosadmin.js?v=371"></script>
-<script src="js/sgadd-pbp.js?v=371"></script>
-<script src="js/sgadd-rendimiento.js?v=371"></script>
-<script src="js/sgadd-conclusiones.js?v=371"></script>
-<script src="js/sgadd-diagnostico.js?v=371"></script>
+<script src="js/sgadd-niveles.js?v=382"></script>
+<script src="js/sgadd-rachas.js?v=382"></script>
+<script src="js/sgadd-jugadores.js?v=382"></script>
+<script src="js/sgadd-4factores.js?v=382"></script>
+<script src="js/sgadd-predicciones.js?v=382"></script>
+<script src="js/sgadd-scouting.js?v=382"></script>
+<script src="js/sgadd-cancha.js?v=382"></script>
+<script src="js/sgadd-ciclos.js?v=382"></script>
+<script src="js/sgadd-escalones.js?v=382"></script>
+<script src="js/sgadd-pwa.js?v=382"></script>
+<script src="js/sgadd-cicloinforme.js?v=382"></script>
+<script src="js/sgadd-ciclosui.js?v=382"></script>
+<script src="js/sgadd-ciclosadmin.js?v=382"></script>
+<script src="js/sgadd-pbp.js?v=382"></script>
+<script src="js/sgadd-rendimiento.js?v=382"></script>
+<script src="js/sgadd-conclusiones.js?v=382"></script>
+<script src="js/sgadd-diagnostico.js?v=382"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -4381,8 +4618,8 @@ const LOGOS = (function () {
          tiene ni el repo ni por que enterarse de que existe. */
       if (typeof SGADD_DEMO !== 'undefined' && SGADD_DEMO.activo()) {
         try {
-          const img = await cargarImagen(SGADD_DEMO.logo());
-          const r = { img: img, url: SGADD_DEMO.logo() };
+          const img = await cargarImagen(SGADD_DEMO.logo(nombreEquipo));
+          const r = { img: img, url: SGADD_DEMO.logo(nombreEquipo) };
           cache.set(clave, r); if (r.img) resueltos++;
           return r;
         } catch (e) { /* sin isotipo se sigue por el camino normal */ }
@@ -4504,7 +4741,7 @@ const LOGOS = (function () {
        la grilla, la tabla de posiciones, el scatter, el scouting y los
        cinco PDF. Repetirlo en cada llamador dejaria uno sin cubrir y el
        escudo de un club real aparecería en una demo publica. */
-    if (typeof SGADD_DEMO !== 'undefined' && SGADD_DEMO.activo()) return SGADD_DEMO.logo();
+    if (typeof SGADD_DEMO !== 'undefined' && SGADD_DEMO.activo()) return SGADD_DEMO.logo(nombreEquipo);
     const r = cache.get(normalizar(nombreEquipo));
     return (r && r.url) ? r.url : null;
   }
@@ -5067,7 +5304,12 @@ function buildPrincipal() {
      nunca podría haber funcionado. */
   const nJugadores = idxLiga ? String(idxLiga.jugadores.length) : '—';
   const kpiJugadores = renderModernCard('Jugadores', nJugadores, 'Con datos', iconUser);
-  const kpiPartidos = renderModernCard('Partidos', baseE.error ? '—' : String(partidosUnicos), 'Disputados', iconGlobe);
+  /* SIN LA HOJA, DEL ÍNDICE: en la demo `Base Datos E` no se pide por esta
+     capa vieja (punto 52) y el KPI decía «—» con 272 partidos en la barra
+     de arriba. Es la misma cuenta que ya muestra esa barra. */
+  const nPartidos = (baseE.error && idxLiga && idxLiga.partidos != null) ? String(idxLiga.partidos)
+    : (baseE.error ? '—' : String(partidosUnicos));
+  const kpiPartidos = renderModernCard('Partidos', nPartidos, 'Disputados', iconGlobe);
 
   const leaderPts = buildLeaderCard('Líderes en Puntos', promJ, ['PTS', 'PUNTOS']);
   const leaderReb = buildLeaderCard('Líderes en Rebotes', promJ, ['RT', 'REB', 'REBOTES', 'REBOTES TOTALES']);

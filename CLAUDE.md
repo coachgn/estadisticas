@@ -204,6 +204,10 @@ node test-escalones.js      #  22 tests · el criterio ÚNICO de meta por tercio
 
 node test-pwa.js            #  23 tests · la PWA instalable: manifest, íconos, service worker (red primero), registro y botón de instalar (punto 175)
 
+node test-tour.js           # 146 tests · el hero de la landing, los logos sin contenedor, los planes sin precio y «a medida»,
+                           #             la demo como la de un usuario activo (estructura por liga, fixture, fechas) y el
+                           #             recorrido guiado: nunca modal, se pausa y se retoma (puntos 177 y 178)
+
 node test-diagnostico-rival.js # 61 tests · el soporte de decisión del Scouting: la versión perdedora, los duelos
                            #             cruzados con sus volúmenes de umbral, el FODA y las tres cosas (puntos 146 y 147)
 
@@ -335,7 +339,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=371`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=382`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -17068,9 +17072,122 @@ js/sgadd-pwa.js      registra el SW y maneja el botón «⤓ Instalar app» (#pw
 
 ## 176. NINGÚN «TOTAL» QUE JUNTE INSTANCIAS DE POSTEMPORADA (2026-11-13)
 
-Reportado en Bahía Blanca (cliente Leandro N. Alem): con los Cuartos del Clausura en juego, la barra abría en **«Total - Clausura» · 10 equipos · 7 partidos**, dentro de «Fase regular». Assets en `?v=371`. `test-llave-bahia.js` (sección 6) lo fija.
+Reportado en Bahía Blanca (cliente Leandro N. Alem): con los Cuartos del Clausura en juego, la barra abría en **«Total - Clausura» · 10 equipos · 7 partidos**, dentro de «Fase regular». Assets en `?v=382`. `test-llave-bahia.js` (sección 6) lo fija.
 
 - **Lo medido**: el libro `bahia-blanca-2026-postemporada-clausura` (el mismo del Play-In) trae `PLAY IN|CLAUSURA` (3 partidos) y `CUARTOS|CLAUSURA` (4), los dos con la carpeta al revés (punto 134). Para el núcleo eso es FASE = CLAUSURA con dos «torneos», y desde el punto 3 ter toda fase con dos torneos o más recibe su TOTAL sintético: juntaba un Play-In con unos Cuartos. Y como la fase de lo último jugado no es REGULAR, `tramoPorDefecto` abría por ese total.
 - **El arreglo** (`combinacionesTorneoFase`, núcleo y `compartido/`): una FASE donde algún «torneo» es una instancia de eliminación (`SGADD.esInstanciaDeEliminacion`: las del vocabulario `FASES` con `eliminacion` y PLAY IN, PLAYOFFS, OCTAVOS, CUARTOS, SEMIFINAL, FINAL, PROMOCIÓN, PERMANENCIA, TERCER PUESTO…) no recibe TOTAL. Ahora abre en `CUARTOS|CLAUSURA`. El TOTAL de la regular (Apertura + Clausura) y el de una fase de eliminación con dos torneos reales siguen igual.
 - **Un link o una preferencia guardada con `*TOTAL*|CLAUSURA`** deja de ser válido y cae al tramo por defecto.
 - **Panel Master**: las tres fases de Bahía leen bien, pero cada una está declarada de una forma (Octavos con `torneo: OCTAVOS` y libro `APERTURA`; Play-In sin torneo y libro `PLAY IN`; Cuartos con `torneo: CLAUSURA` y libro `CUARTOS`). Lo prolijo es declarar todas como Cuartos (libro = la instancia, torneo = Apertura/Clausura) y nombrar las carpetas «CLAUSURA - CUARTOS». No se escribió en KV.
+
+---
+
+## 177. LA LANDING DE UN GOLPE DE VISTA, LA DEMO CON ESCUDOS Y EL RECORRIDO GUIADO (2026-11-13)
+
+Assets en `?v=382`. `test-tour.js` (76) fija el hero, los logos y la guía; `test-demo.js` los escudos.
+Sale de la charla de estrategia (ver `resumen_estrategico_motorstats.pdf`): quien entra desde Instagram tiene que
+entender en segundos qué hacemos, qué le duele hoy y qué solución le damos, y recién ahí ver la demo.
+
+### 1 · El hero de la landing (`js/sgadd-landing.js`)
+- **Orden**: marca → título («Tu scouting y el análisis de tu equipo, ya armados») → bajada → CTA de la demo
+  (primero) y «Agendar demo» → cuatro pares **Hoy / Con MotorStats** → logos de las ligas → cards de secciones,
+  planes y cómo se entra (sin cambios).
+- **Los dolores salen de la investigación con entrenadores** (`DOLORES`): planillas y fórmulas, números sin contexto
+  de liga, no saber qué decisión tomar, cuerpo técnico separado. Cada uno tiene su solución, y ninguna promete un
+  número de velocidad que no se midió (hay test). El cupo de mails NO se repite acá (se dice una sola vez, en los planes).
+- **Los logos de las ligas** (`LIGAS`: LNB, LAB, APdeB, ABB) salen de `logos/<liga>/liga.png` (nunca `_liga.png`: Pages no
+  lo sirve, punto 152). Van en escala de grises y vuelven al color con hover o foco, **solo bajo `@media screen and
+  (hover: hover)`**: en el teléfono no hay hover y un logo gris que nunca se enciende se lee deshabilitado. Cada uno lleva
+  su nombre debajo y lleva a la demo.
+- CSS a mano en el `<style>` (nodos inyectados), sin variantes de Tailwind: `sgadd.css` no se regeneró.
+
+### 2 · La demo con escudos reales, y la privacidad
+- **Antes** todos los equipos mostraban el isotipo. **Ahora** cada «EQUIPO N» recibe el escudo de un club de OTRA liga
+  (La Plata, Bahía Blanca, Liga Nacional: 59 archivos en `ESCUDOS` de `sgadd-demo.js`), repartido con una semilla fija:
+  el mismo equipo conserva el escudo en cada visita. `SGADD_DEMO.logo(nombre)` es el único punto; lo llaman `getUrl` y
+  `resolverUno` de LOGOS (ahora con el nombre). Un nombre que no es «EQUIPO N» cae al isotipo.
+- **Por qué NO se usan los escudos de la liga de donde salen los datos**: un escudo real al lado de las métricas de su
+  club real expone a ese club (la privacidad táctica es no negociable). Ningún escudo del reparto es de la Liga
+  Argentina, y ninguno corresponde a los números que tiene al lado. Es la mezcla entre torneos.
+- **La numeración ahora es aleatoria con semilla fija** (`generar-demo.js`: `mezclar` + `generador`, mulberry32). Antes
+  `EQUIPO 2..17` seguía el orden alfabético del nombre real, que es una pista para quien conoce los diecisiete clubes.
+  `EQUIPO 1` sigue siendo el propio (el patrón `^EQUIPO 1$` no cambia); los jugadores de cada plantel también se
+  numeran mezclados. Los NÚMEROS de las métricas siguen sin tocarse (punto 52). Snapshot regenerado: mismas 21.104
+  celdas de nombre, sin un nombre real ni el sheetId.
+- **Consecuencia en los tests**: `test-bajas.js` elegía «EQUIPO 5» por nombre y dejó de describir el mismo club; ahora
+  elige el equipo por la propiedad que necesita. Un test que dependa de qué club es «EQUIPO N» está atado a un dato.
+
+### 3 · El recorrido guiado (`js/sgadd-tour.js`, solo en la demo)
+- **Nunca modal**: el oscurecido es un hueco en una sombra de 9999px con `pointer-events: none`, así que el panel
+  sigue usándose; no roba el foco; Esc lo pausa; las flechas navegan.
+- **No arranca solo**: la primera vez que se entra a una sección ofrece, en chico y abajo a la derecha, «¿Te muestro qué
+  hay en X?» con «Sí, mostrame» / «Ahora no»; si se ignora se va a los 14 s. Una sección ofrecida no se vuelve a ofrecer.
+- **El botón «Guía» queda siempre a la vista** y abre tres cosas: recorrer (o retomar) la sección, «Explicar al tocar» y
+  apagar las sugerencias. Pausar guarda el paso.
+- **«Explicar al tocar»** es un modo explícito y arranca apagado: con él, tocar una tarjeta, una pestaña o un ítem del
+  menú muestra qué es en vez de abrirlo (se nota: el botón cambia y el cursor también).
+- **Cinco recorridos** (Principal, Equipos, Jugadores, Clasificación, Scouting). Cada paso apunta por selector, por título de
+  card o por texto de botón; un paso cuyo objetivo no está se SALTEA, nunca traba. `antes` prepara la pantalla solo si el
+  usuario empezó (abrir un equipo, armar un cruce de ejemplo en Scouting). La cuenta «2 de 5» es la del guion, no la de lo
+  visible. El margen del scroll sale de la barra de la demo (en el teléfono mide ~145px y tapaba el objetivo).
+- Preferencias en `sessionStorage` (la demo es de paso). A 375px la tarjeta es una hoja abajo y no desborda.
+
+### Lo que NO se hizo
+- **Medición** (UTM y eventos): es lo primero que recomienda el resumen estratégico y sigue pendiente. Sin eso no se
+  sabe si el hero y la guía mueven algo.
+- **La demo no muestra «tu liga»**: los logos llevan a datos de muestra. El texto lo dice; no se afirma que el panel de
+  demo tenga los datos de la liga de quien mira.
+- No se verificó con un lector de pantalla ni en un celular real (solo el viewport de 375px emulado).
+- Tests de documentos: `test-bajas`/`test-muestra` se ajustaron; el resto de la suite quedó verde.
+
+---
+
+## 178. LA LANDING DEL DOCUMENTO DE BIENVENIDA Y LA DEMO COMO LA DE UN USUARIO ACTIVO (2026-11-13)
+
+Assets en `?v=382`. Segunda vuelta del punto 177, con lo que el club vio navegando la demo y el documento
+`MotorStatsAR_Bienvenida.html` (planes, servicios a medida y la cita de la marca).
+
+### 1 · La portada
+- **Orden**: hero (con «no hace falta ser experto») → bloque «No hace falta ser experto» + la cita «Si MotorStats fuera una
+  persona…, sería ese integrante más de tu cuerpo técnico» → logos → **planes directo debajo** → a medida → cómo se entra.
+  **Se sacaron las cards de secciones**: las cuenta la guía y eran redundantes (la función `tarjetaSeccion` sigue, la usan
+  las secciones sueltas de la landing).
+- **Logos SIN contenedor**: sueltos, en gris y con color al hover; «Realizamos el seguimiento de las siguientes ligas» y
+  «¿No ves tu liga? Consultanos». Cada logo lleva a `?demo=1&liga=lnb|lab|apb|abb`.
+- **Planes sin precio** (varía por tipo de cliente). El contenido sale del documento y **sigue derivado del gate**: las
+  pantallas de `MODULOS` (ahora con **Fixture**, que es abierta) + `EXTRAS_BASE` escritos a mano (carga automática en 24 hs,
+  rankings, alertas de plantel, análisis post-partido), porque no son secciones del menú. Las pantallas se **agrupan** en una
+  fila «Panel completo de la liga» (solo presentación: `planes()` sigue una por sección, que es lo que se verifica).
+  **Ojo**: el documento no lista el análisis post-partido en Oro, pero «cada plan suma sobre el anterior», así que Oro lo hereda.
+- **A medida** (`A_MEDIDA`, `SERVICIOS_PUNTUALES`): plan a medida para el club (más de un equipo o categoría, para elevar el
+  desarrollo y la formación de jugadores), seguimiento de un equipo en un torneo y los cuatro servicios puntuales del
+  documento. Sin precio («a cotizar»). `consultar(plan, servicio)` abre el mismo modal; el mensaje de WhatsApp dice
+  «quiero consultar por: <servicio>».
+- **No se incluyó** la «Oferta por lanzamiento — primeros 15 cuerpos técnicos» del documento: no se pidió y lleva un compromiso comercial.
+
+### 2 · La demo como la de un usuario activo (sin carteles de error)
+- **Estructura por liga** (`LIGAS_DEMO`, `?liga=`): los datos son siempre los mismos 17 equipos anónimos, pero la tabla pinta las
+  zonas de la competencia elegida (LNB: directo a cuartos / reclasificación / Play Out; LAB: directo a octavos /
+  reclasificación; ABB: cuartos / Play-In / permanencia; APdeB: playoffs). Son **de referencia**: salen de `torneos/*.json` y
+  del reglamento de la ABB. `adaptarConfig` se aplica donde nace la config (`sgadd-club.js`) y devuelve una copia.
+  Se fueron «Sin formato de competencia» y el aviso de calendario parcial.
+- **Fixture**: la demo declara un torneo de muestra (`torneo()`), que `cargarTorneo` lee en vez de pedir un archivo.
+  Tres jornadas hacia adelante desde hoy (EQUIPO 1 juega en todas): nunca queda vencido.
+- **Fechas siempre actuales** (`rehidratar(crudo, { hoy })`): se corren TODAS las fechas el mismo número de días, de modo que
+  el último partido cae ayer. No cambia un solo número, solo el calendario.
+- **Principal ya no dice «Partidos —»**: sin la hoja vieja cuenta del índice (`idx.liga.partidos`).
+- **El banner dice que son datos de referencia** (equipos, números y escudos mezclados de distintas ligas), invita a navegar toda la
+  plataforma y manda a WhatsApp.
+
+### 3 · La guía
+- **Jugadores** suma TOP 3 del plantel (plegado), Plantel, Pack PLANTEL y Ranking del plantel; **Principal** suma la
+  campanita (alertas de plantel); hay recorrido del **Fixture**; «explicar al tocar» también explica la campana.
+- **Al terminar Scouting** (el momento «aha») se ofrece «Agendar demo por WhatsApp»: ahí y solo ahí la guía vende algo.
+- Un paso cuyo objetivo no está se saltea en el acto (solo se espera si el paso preparó la pantalla).
+
+### Lo que queda abierto
+- **Medición** (UTM y eventos), que es lo primero del resumen estratégico.
+- **La demo muestra el scouting completo** (anonimizado). Decisión de producto: lo escaso no es el informe sino tenerlo con
+  los datos de tu equipo, cargados solos; por eso el CTA va justo después del PDF. Si el club prefiere bloquear parte, hay que
+  decidir qué.
+- Los números de las métricas siguen siendo reales: quien conozca la Conferencia Norte 25/26 podría reconocer un equipo por
+  sus métricas. Perturbarlos quitaría realismo; es una decisión del club.

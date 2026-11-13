@@ -50,7 +50,12 @@ titulo('1 · Sin bajas, la proyección es la de siempre');
 
 titulo('2 · La baja del jugador clave cuesta margen');
 {
-  const eq = EQ.find(e => e.nombre === 'EQUIPO 5') || EQ[3];
+  /* EL EQUIPO SE ELIGE POR LA PROPIEDAD, NO POR EL NOMBRE. La numeración de
+     la demo es aleatoria con semilla fija (2026-11-13): «EQUIPO 5» dejó de
+     ser siempre el mismo club. Lo que esta sección necesita es un equipo
+     cuyo más usado SÍ le cuesta (ORTG y Net negativos). */
+  const costoDe = (e) => { const t = masUsado(e.clave); return t ? F.impactoBajas(IDX, e.clave, [{ nombre: t.nombre }]) : null; };
+  const eq = EQ.find(e => { const i = costoDe(e); return i && i.ok && i.ortg < 0 && i.net < 0 && i.net > -8; }) || EQ[3];
   const rival = EQ.find(e => e.clave !== eq.clave);
   const top = masUsado(eq.clave);
   const imp = F.impactoBajas(IDX, eq.clave, [{ nombre: top.nombre }]);

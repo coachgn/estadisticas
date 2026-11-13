@@ -261,6 +261,12 @@ const CLUB = (function () {
       const r = await fetch(url, { cache: 'no-cache' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       estado.cfg = await r.json();
+      /* LA DEMO ELIGE SU LIGA DE REFERENCIA (`?liga=`): le pone el nombre,
+         las zonas de la tabla y el enganche a un torneo de muestra. Se
+         hace acá, que es donde nace la config, y no en cada pantalla. */
+      if (enDemo() && typeof SGADD_DEMO !== 'undefined' && SGADD_DEMO.adaptarConfig) {
+        estado.cfg = SGADD_DEMO.adaptarConfig(estado.cfg);
+      }
       console.log('[CLUB] cargado:', estado.cfg.nombre, '·', url);
     } catch (e) {
       estado.error = e.message || String(e);

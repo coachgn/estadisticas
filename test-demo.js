@@ -221,8 +221,34 @@ check('esa planilla NO trae sheetId: no resuelve contra ningún libro',
 /* NINGÚN EQUIPO MUESTRA SU ESCUDO REAL, y se resuelve en el ÚNICO punto
    por el que pasan la grilla, la tabla, el scatter, el scouting y los
    cinco PDF. Repetirlo por sección deja uno sin cubrir. */
-check('LOGOS.getUrl devuelve el isotipo en demo',
-  /function getUrl\(nombreEquipo\)[\s\S]{0,600}SGADD_DEMO\.logo\(\)/.test(idx));
+check('LOGOS.getUrl devuelve el escudo de la demo para ESE equipo',
+  /function getUrl\(nombreEquipo\)[\s\S]{0,700}SGADD_DEMO\.logo\(nombreEquipo\)/.test(idx));
+
+/* LOS ESCUDOS SON REALES PERO NUNCA EL DEL CLUB DE LOS DATOS (2026-11-13).
+   Antes todos eran el isotipo; una demo con diecisiete cuadrados iguales
+   no se parece a una liga. Cada «EQUIPO N» recibe el escudo de un club de
+   OTRA liga, repartido con una semilla fija. */
+const ESC = DEMO.ESCUDOS || [];
+check('hay escudos de sobra para los 17 equipos', ESC.length >= 17, String(ESC.length));
+check('todos los escudos del reparto existen en el repo',
+  ESC.every(f => fs.existsSync(path.join(__dirname, f))),
+  ESC.filter(f => !fs.existsSync(path.join(__dirname, f))).join(', '));
+check('NINGUNO es de la Liga Argentina, de donde salen los datos',
+  ESC.every(f => !/^logos\/liga-argentina\//.test(f)));
+check('ni es el logo de una liga (`_liga`)',
+  ESC.every(f => !/\/(liga|apdb)\.png$/.test(f)));
+check('los 17 equipos reciben 17 escudos DISTINTOS',
+  new Set(Array.from({ length: 17 }, (_, i) => DEMO.logo('EQUIPO ' + (i + 1)))).size === 17);
+check('el mismo equipo conserva el mismo escudo en cada llamada',
+  DEMO.logo('EQUIPO 7') === DEMO.logo('EQUIPO 7') && DEMO.logo('equipo 7') === DEMO.logo('EQUIPO 7'));
+check('un nombre que no es «EQUIPO N» —o ninguno— cae al isotipo',
+  /motorlogo/.test(DEMO.logo('BOCA')) && /motorlogo/.test(DEMO.logo()) && /motorlogo/.test(DEMO.logo('EQUIPO 0')));
+check('el reparto NO sigue el orden de la lista: se mezcla',
+  DEMO.REPARTO.join('|') !== DEMO.ESCUDOS.join('|'));
+check('el generador numera en orden ALEATORIO con semilla fija, no alfabético',
+  /function mezclar/.test(fs.readFileSync(path.join(__dirname, 'generar-demo.js'), 'utf8'))
+  && /const SEMILLA = \d+/.test(fs.readFileSync(path.join(__dirname, 'generar-demo.js'), 'utf8'))
+  && !/Math\.random/.test(fs.readFileSync(path.join(__dirname, 'generar-demo.js'), 'utf8')));
 
 /* =====================================================================
    5 · EL ARRANQUE
@@ -282,10 +308,13 @@ check('y NO se indexa: la demo no compite con la landing en Google',
 titulo('6 · LA BARRA DE CONTEXTO Y EL MODAL DE CAPTURA');
 
 const barra = DEMO.banner();
-check('la barra dice que son datos de muestra y con qué plan',
-  /Plan Plata/i.test(barra) && /datos anónimos de muestra/i.test(barra), barra.slice(0, 90));
-check('y pregunta por los datos propios, que es el gancho',
-  /estadísticas de tu equipo/i.test(barra));
+check('la barra dice que son datos de REFERENCIA y con qué plan',
+  /Plan Plata/i.test(barra) && /Datos de referencia/i.test(barra), barra.slice(0, 90));
+check('aclara que los equipos, números y escudos están mezclados de distintas ligas',
+  /equipos, los números y los escudos/i.test(barra) && /mezclados de distintas ligas/i.test(barra));
+check('invita a navegar toda la plataforma', /Navegá toda la plataforma/i.test(barra));
+check('y pregunta por los datos propios y manda a WhatsApp, que es el gancho',
+  /datos de tu equipo/i.test(barra) && /WhatsApp/i.test(barra));
 check('con su CTA para agendar',
   /demo-cta/.test(barra) && /abrirModal/.test(barra));
 
@@ -482,10 +511,10 @@ check('vive en UN solo lugar del módulo',
    el repo ni por qué enterarse de que existe — y en la demo saltaba
    pidiendo `equipo-1.png` … `equipo-17.png`. */
 check('en demo, el isotipo se resuelve en resolverUno y no se sondea nada',
-  /const tarea = \(async \(\) => \{[\s\S]{0,1400}?SGADD_DEMO\.activo\(\)[\s\S]{0,200}?cargarImagen\(SGADD_DEMO\.logo\(\)\)/.test(idx));
+  /const tarea = \(async \(\) => \{[\s\S]{0,1400}?SGADD_DEMO\.activo\(\)[\s\S]{0,200}?cargarImagen\(SGADD_DEMO\.logo\(nombreEquipo\)\)/.test(idx));
 check('y la sustitución entra ANTES del manifiesto y del sondeo',
-  idx.indexOf('cargarImagen(SGADD_DEMO.logo())') < idx.indexOf('await cargarManifiesto();'),
-  idx.indexOf('cargarImagen(SGADD_DEMO.logo())') + ' < ' + idx.indexOf('await cargarManifiesto();'));
+  idx.indexOf('cargarImagen(SGADD_DEMO.logo(nombreEquipo))') < idx.indexOf('await cargarManifiesto();'),
+  idx.indexOf('cargarImagen(SGADD_DEMO.logo(nombreEquipo))') + ' < ' + idx.indexOf('await cargarManifiesto();'));
 /* Y por eso `getImage` contesta lo mismo que `getUrl`: son dos lecturas
    del MISMO caché, y la sustitución de `getUrl` sola dejaba los gráficos
    con iniciales en vez del logo. */
