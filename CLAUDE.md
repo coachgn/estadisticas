@@ -4158,6 +4158,28 @@ Antes esto era un link en un documento: había que acordarse de entrar,
 buscar el componente y leerlo. Ahora la checklist que corresponde se lee
 desde el repo, sin red.
 
+### Las otras skills del repo (2026-11-13)
+
+Instaladas igual (`npx skills add <repo> --tool claude-code -y`), en
+`.agents/skills/` y registradas en `skills-lock.json`. Son guías de
+trabajo: **no cambian el criterio del punto 14 ni del proyecto** (sin
+dependencias, CSS por club, contraste medido, `prefers-reduced-motion`).
+Si una skill propone otra cosa, manda este archivo.
+
+| Para qué | Skill | Repo |
+|---|---|---|
+| Que la UI no se vea genérica | `design-taste-frontend` · **solo local** (37 MB de fotos, en `.gitignore`) | Leonxlnx/taste-skill |
+| Layout, espaciado, tipografía, auditoría de UI | `impeccable` | pbakaus/impeccable |
+| Movimiento y transiciones | `animate`, `review-animations`, `improve-animations`, `remove-animations`, `choreograph`, `emil-design-eng`, `break-ui`, `mobile-native`… | emilkowalski/skills |
+| Revisar seguridad antes de producción | `security-start` (punto de entrada), `owasp-audit`, `api-audit`, `secrets-audit`, `cloud-audit` (Vercel), `prompt-injection` (Centro de Mando)… | briiirussell/cybersecurity-skills |
+
+- Del set de Emil sobran para este proyecto `write-swift`, `animate-expo`
+  y `ask-sonner` (Swift, React Native y una librería de React): no aplican.
+- **No se instalaron**, a propósito: las de Supabase y Postgres (el stack
+  no tiene base de datos: Vercel + Upstash) y los packs de mukul975 (817
+  skills) y Masriyan.
+- Un clon nuevo trae todas menos Taste: `npx skills add Leonxlnx/taste-skill --tool claude-code -y`.
+
 ### Para qué se consulta
 
 | Tema | Qué resuelve |
