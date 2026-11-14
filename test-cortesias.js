@@ -229,6 +229,24 @@ const pedido = (tok, params, query, body) => ({ headers: tok ? { authorization: 
   check('el handler sin el guard no atiende al pase (defensa en profundidad)', sinGuard.status === 403);
   const pbpSinGuard = await PBP.manejarPbp(pedido(tok, { clubId: 'lnb', categoria: 'lnb-unica' }, { equipo: BO }), deps);
   check('el play-by-play sin el guard tampoco', pbpSinGuard.status === 403);
+  check('el guard deja pasar el play-by-play de SU equipo', !(await g('/api/v1/pbp/lnb/lnb-unica', { equipo: BO })).error);
+  const rqPbp = await conGuard('/api/v1/pbp/lnb/lnb-unica', { clubId: 'lnb', categoria: 'lnb-unica' }, { equipo: BO });
+  const pbpCon = await PBP.manejarPbp(rqPbp, deps);
+  check('y con el guard el handler lo atiende (no un 403)', pbpCon.status !== 403, pbpCon.body);
+
+  /* EL BUG DE v383: el cliente no pedía el paquete porque `leerPbp` miraba
+     `estadosCompartibles()`, que da false para un pase. La pantalla decía
+     «sin backend o sin sesión» y el servidor nunca se enteraba. */
+  const DATA = require('./js/sgadd-data.js');
+  const AUTHP = require('./js/sgadd-auth.js');
+  DATA.configurar('https://api.prueba');
+  AUTHP.establecerToken(tok);
+  const pedidas = [];
+  const fetchPbp = async (url) => { pedidas.push(url); return { ok: true, status: 200, json: async () => ({ ok: true, paquete: {} }) }; };
+  check('el pase no comparte estados', DATA.estadosCompartibles() === false);
+  const lp = await DATA.leerPbp('lnb', 'lnb-unica', BO, { fetch: fetchPbp }).catch(e => ({ error: e.message }));
+  check('pero SÍ pide el play-by-play de su equipo', lp.ok === true && pedidas.length === 1 && /\/api\/v1\/pbp\/lnb\/lnb-unica\?equipo=/.test(pedidas[0]), lp);
+  AUTHP.establecerToken(null);
 
   seccion('7 · Revocar, regenerar y vencer');
   const rev = await R.manejarCortesiasEscribir(pedido(tokAdmin, {}, {}, { accion: 'revocar', id: id }), deps);

@@ -561,6 +561,12 @@ const SGADD_DATA = (function () {
     return true;
   }
 
+  /* Backend y token, sin mirar si es un pase: el play-by-play SÍ lo pide un
+     pase de cortesía (el de su equipo; el guard del servidor decide). Con
+     `estadosCompartibles` acá el pase nunca pedía el paquete y la pantalla
+     decía «sin backend o sin sesión» (v384). */
+  function conSesion() { return !!(baseApi && auth && auth.token()); }
+
   function rutaEstados(club, slug) {
     return '/api/v1/estados/' + encodeURIComponent(club) + '/' + encodeURIComponent(slug);
   }
@@ -596,7 +602,7 @@ const SGADD_DATA = (function () {
      ===================================================================== */
   async function leerPbp(club, slug, equipo, opciones) {
     const o = opciones || {};
-    if (!estadosCompartibles()) throw Object.assign(new Error('Sin backend o sin sesión.'), { codigo: 'SIN_API' });
+    if (!conSesion()) throw Object.assign(new Error('Sin backend o sin sesión.'), { codigo: 'SIN_API' });
     const traer = o.fetch || fetch;
     const r = await traer(baseApi + '/api/v1/pbp/' + encodeURIComponent(club) + '/' + encodeURIComponent(slug)
       + (equipo ? '?equipo=' + encodeURIComponent(equipo) : ''), {
@@ -774,7 +780,7 @@ const SGADD_DATA = (function () {
     cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo, equiposDelLibro,
     fixtureDeTorneo, llaveDeTorneo, rivalDeTorneo, prediccionesDeZona,
     login, fijarClave, paseConsultar, paseCanjear, cortesias, guardarCortesia, clientes, guardarClientes, fichas, guardarFicha,
-    estadosCompartibles, leerEstados, guardarEstados, leerPbp, ciclosSellados, sellarCiclo, ciclosGestion, ciclosGestionar, ciclosPublicar, ciclosPaquete, cerrarCiclo, ciclosPublicados, cicloFoto,
+    estadosCompartibles, conSesion, leerEstados, guardarEstados, leerPbp, ciclosSellados, sellarCiclo, ciclosGestion, ciclosGestionar, ciclosPublicar, ciclosPaquete, cerrarCiclo, ciclosPublicados, cicloFoto,
     varaJugadores, fichajesTorneos, fichajesZona, fichajesTiros, fichajesGuardarFichas, fichajesPadron, fichajesGuardarPadron,
   };
 })();
