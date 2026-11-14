@@ -173,6 +173,11 @@ function crearApp(opciones) {
      trae un código de un uso por contacto y lo cuida el limitador. */
   app.post('/api/v1/pase/consultar', responder(cortesias.manejarPaseConsultar));
   app.post('/api/v1/pase/canjear', responder(cortesias.manejarPaseCanjear));
+  /* Fase 2: la solicitud de la landing (sin token, con el limitador y el
+     tope de pendientes) y la telemetría de la muestra (solo con el token
+     de un pase: el guard la deja pasar y le pone `req.cortesia`). */
+  app.post('/api/v1/pase/solicitar', responder(cortesias.manejarPaseSolicitar));
+  app.post('/api/v1/pase/actividad', responder(cortesias.manejarPaseActividad));
   app.get('/api/v1/cortesias', responder(cortesias.manejarCortesias));
   app.post('/api/v1/cortesias', responder(cortesias.manejarCortesiasEscribir));
   app.post('/api/v1/clave', responder(h.manejarClave));

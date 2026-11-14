@@ -47,6 +47,16 @@ const TOKEN_MAX_SEG = 72 * 3600;
 const MAX_CONTACTOS = 3;
 const ESTADOS = ['activo', 'revocado', 'convertido'];
 const ID = /^[a-z0-9]{10}$/;
+/* FASE 2 · dos hashes más de la misma familia. Ninguno toca el catálogo
+   ni el padrón de clientes. */
+const CLAVE_SOLICITUDES = 'sgadd:cortesias:solicitudes';
+const CLAVE_ACTIVIDAD = 'sgadd:cortesias:actividad';
+/* Una solicitud entra sin token desde la landing: el tope de pendientes
+   evita que un formulario abierto llene KV. Mismo WhatsApp = la misma
+   solicitud (se suma una vez más), no una nueva. */
+const MAX_PENDIENTES = 300;
+const ESTADOS_SOLICITUD = ['pendiente', 'aprobada', 'descartada'];
+const MOTIVOS = ['demo', 'plan', 'servicio'];
 const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 function almacen(deps) { return (deps && deps.kv) || kv; }
@@ -207,6 +217,7 @@ function armar(pedido, catalogoKV, opciones) {
     vence: venceDe(dias, ahora),
     creadaPor: normalizarEmail(p.creadaPor) || null,
     origen: p.origen === 'solicitud' ? 'solicitud' : 'admin',
+    solicitudId: (p.origen === 'solicitud' && ID.test(String(p.solicitudId || ''))) ? String(p.solicitudId) : null,
     estado: 'activo',
     invitado: inv.contacto,
     nota: textoCorto(p.nota, 200),
@@ -355,7 +366,10 @@ function rutaPermitida(metodo, ruta, query, pase) {
     try { return decodeURIComponent(s).toLowerCase(); } catch (e) { return ''; }
   });
   const q = query || {};
-  if (m !== 'GET' || seg[0] !== 'api' || seg[1] !== 'v1') return false;
+  if (seg[0] !== 'api' || seg[1] !== 'v1') return false;
+  /* La única escritura de un pase: su propia telemetría (Fase 2). */
+  if (m === 'POST') return seg.length === 4 && seg[2] === 'pase' && seg[3] === 'actividad';
+  if (m !== 'GET') return false;
   const propio = (eq) => !eq || CORE.claveEquipo(String(eq)) === CORE.claveEquipo(pase.equipo);
   const r = seg.slice(2);
   /* el catálogo: viaja recortado al pase (ver `catalogo.publicoCortesia`). */
@@ -399,10 +413,139 @@ async function porCodigo(codigo, deps) {
   return id ? todos[id] : null;
 }
 
+
+/* --------------------------------------------------------------------
+   FASE 2 · LA DEMANDA ENTRANTE («Agendar demo con mis datos»)
+
+   El formulario de la landing deja una SOLICITUD: quién es, de qué club y
+   su WhatsApp (obligatorio). El admin la ve en el Panel Master, elige el
+   equipo del catálogo y la aprueba: sale un pase con `origen: 'solicitud'`.
+   -------------------------------------------------------------------- */
+
+/** Valida lo que manda el formulario. Exige el club y el WhatsApp. */
+function normalizarSolicitud(pedido) {
+  const x = pedido || {};
+  const out = {
+    nombre: textoCorto(x.nombre, 80),
+    rol: textoCorto(x.rol, 40),
+    club: textoCorto(x.club, 80),
+    whatsapp: normalizarWhatsapp(x.whatsapp),
+    email: normalizarEmail(x.email),
+    pais: textoCorto(x.pais, 40),
+    ciudad: textoCorto(x.ciudad, 60),
+    liga: textoCorto(x.liga, 60),
+    motivo: MOTIVOS.indexOf(String(x.motivo || '')) !== -1 ? String(x.motivo) : 'demo',
+    plan: textoCorto(x.plan, 30),
+    servicio: textoCorto(x.servicio, 80),
+  };
+  const faltan = [];
+  if (!out.club) faltan.push('club');
+  if (!out.whatsapp) faltan.push('whatsapp');
+  return faltan.length ? { ok: false, faltan: faltan } : { ok: true, datos: out };
+}
+
+/**
+ * Suma una solicitud al hash, PURA sobre el mapa de hoy. Con el mismo
+ * WhatsApp pendiente, la actualiza y cuenta una vez más; si no, crea una
+ * nueva, salvo que ya haya demasiadas pendientes.
+ */
+function sumarSolicitud(todas, datos, opciones) {
+  const ahora = ahoraDe(opciones).toISOString();
+  const lista = Object.keys(todas || {}).map(k => todas[k]).filter(Boolean);
+  const misma = lista.find(s => s.estado === 'pendiente' && s.datos && s.datos.whatsapp === datos.whatsapp);
+  if (misma) {
+    return { ok: true, solicitud: Object.assign({}, misma, { datos: Object.assign({}, misma.datos, quitarVacios(datos)),
+      veces: (misma.veces || 1) + 1, ultima: ahora }), nueva: false };
+  }
+  if (lista.filter(s => s.estado === 'pendiente').length >= MAX_PENDIENTES) {
+    return { ok: false, codigo: 'TOPE', mensaje: 'Ahora no podemos tomar la solicitud. Escribinos por WhatsApp.' };
+  }
+  return { ok: true, nueva: true, solicitud: { id: nuevoId(), datos: datos, estado: 'pendiente',
+    creada: ahora, ultima: ahora, veces: 1, paseId: null } };
+}
+function quitarVacios(o) {
+  const r = {};
+  Object.keys(o || {}).forEach(k => { if (o[k]) r[k] = o[k]; });
+  return r;
+}
+
+async function leerSolicitud(id, deps) {
+  if (!ID.test(String(id || ''))) return null;
+  const r = await almacen(deps).leerCampos(CLAVE_SOLICITUDES, [id]);
+  return r[id] || null;
+}
+async function listarSolicitudes(deps) { return almacen(deps).leerHash(CLAVE_SOLICITUDES); }
+async function guardarSolicitud(s, deps) {
+  if (!s || !ID.test(s.id)) throw new Error('solicitud inválida');
+  await almacen(deps).escribirCampos(CLAVE_SOLICITUDES, { [s.id]: s });
+  return s;
+}
+
+/* --------------------------------------------------------------------
+   FASE 2 · LA TELEMETRÍA DE LA MUESTRA
+
+   Qué secciones mira, cuántas veces entra y qué exporta. Un registro por
+   pase; lo escribe el panel del invitado (con su token, por el guard) y lo
+   lee el admin. Son contadores: no se guarda ni una navegación entera.
+   -------------------------------------------------------------------- */
+const ETIQUETA = /^[a-z0-9][a-z0-9-]{0,29}$/;
+const MAX_CLAVES = 40;
+
+/** Normaliza un lote de eventos: [{tipo:'ingreso'|'vista'|'export', dato}]. */
+function normalizarEventos(lista) {
+  const out = [];
+  (Array.isArray(lista) ? lista : []).slice(0, 20).forEach((e) => {
+    const tipo = e && String(e.tipo || '');
+    if (tipo === 'ingreso') out.push({ tipo: tipo });
+    else if (tipo === 'vista') {
+      const d = String((e && e.dato) || '').toLowerCase();
+      if (ETIQUETA.test(d)) out.push({ tipo: tipo, dato: d });
+    } else if (tipo === 'export') {
+      const d = textoCorto(e && e.dato, 60);
+      if (d) out.push({ tipo: tipo, dato: d });
+    }
+  });
+  return out;
+}
+
+/** Aplica un lote al registro de actividad de un pase. PURA. */
+function sumarActividad(previa, eventos, opciones) {
+  const ahora = ahoraDe(opciones).toISOString();
+  const a = Object.assign({ ingresos: 0, secciones: {}, exportes: {}, primera: null, ultima: null }, previa || {});
+  a.secciones = Object.assign({}, a.secciones);
+  a.exportes = Object.assign({}, a.exportes);
+  const sumar = (mapa, k) => {
+    if (!(k in mapa) && Object.keys(mapa).length >= MAX_CLAVES) return;
+    mapa[k] = (mapa[k] || 0) + 1;
+  };
+  (eventos || []).forEach((e) => {
+    if (e.tipo === 'ingreso') a.ingresos += 1;
+    else if (e.tipo === 'vista') sumar(a.secciones, e.dato);
+    else if (e.tipo === 'export') sumar(a.exportes, e.dato);
+  });
+  if (eventos && eventos.length) { a.primera = a.primera || ahora; a.ultima = ahora; }
+  return a;
+}
+
+async function leerActividad(id, deps) {
+  if (!ID.test(String(id || ''))) return null;
+  const r = await almacen(deps).leerCampos(CLAVE_ACTIVIDAD, [id]);
+  return r[id] || null;
+}
+async function listarActividad(deps) { return almacen(deps).leerHash(CLAVE_ACTIVIDAD); }
+async function guardarActividad(id, a, deps) {
+  if (!ID.test(String(id || ''))) throw new Error('pase inválido');
+  await almacen(deps).escribirCampos(CLAVE_ACTIVIDAD, { [id]: a });
+  return a;
+}
+
 module.exports = {
   CLAVE, PLAN, DOMINIO, DIAS_RAPIDOS, DIAS_MIN, DIAS_MAX, TOKEN_MAX_SEG, MAX_CONTACTOS, ESTADOS, PANEL_URL,
   huella, nuevoCodigo, emailDelToken, normalizarWhatsapp, normalizarContacto, normalizarDias, venceDe,
   armar, estadoEfectivo, vigente, diasRestantes, segundosDeToken, registrarCanje, paraAdmin, paraPuerta,
   linkDelPase, mensajeInvitacion, urlWhatsapp, equipoLegible, fechaCorta, rutaPermitida,
   leer, listar, guardar, porCodigo,
+  CLAVE_SOLICITUDES, CLAVE_ACTIVIDAD, MAX_PENDIENTES, ESTADOS_SOLICITUD,
+  normalizarSolicitud, sumarSolicitud, leerSolicitud, listarSolicitudes, guardarSolicitud,
+  normalizarEventos, sumarActividad, leerActividad, listarActividad, guardarActividad,
 };

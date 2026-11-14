@@ -367,12 +367,12 @@ const modal = DEMO.modal();
   check('  el modal pide ' + id, modal.indexOf('id="' + id + '"') !== -1);
 });
 
-/* EL TELÉFONO SE SACÓ: el mensaje sale desde el WhatsApp del propio
-   interesado, así que su número ya viaja con él. Pedirlo era fricción
-   que no aportaba un dato. */
-check('el modal ya NO pide el teléfono',
-  !/id="demoTel"/.test(modal) && !/type="tel"/.test(modal) && !/WhatsApp de contacto/.test(modal));
-check('y enviar() tampoco lo lee', !/demoTel/.test(codigoDemo));
+/* EL WHATSAPP VUELVE, Y OBLIGATORIO (Fase 2 de los pases de cortesía,
+   2026-11-14): el mensaje sale desde su WhatsApp, pero la solicitud queda
+   anotada en el Panel Master y el admin le manda la muestra a ese número.
+   Antes se había sacado por fricción; ahora es el dato que se aprueba. */
+check('el modal pide el WhatsApp, un solo campo', (modal.match(/type="tel"/g) || []).length === 1 && /id="demoWhatsapp"/.test(modal));
+check('y enviar() lo lee', /valor\('demoWhatsapp'\)/.test(codigoDemo));
 
 /* EL PAÍS · un desplegable con Argentina elegida por defecto. */
 check('el país es un <select>', /<select id="demoPais"/.test(modal));
@@ -412,17 +412,25 @@ check('y el nombre ya no arrastra la lista de roles', !/list="demoRoles"/.test(m
 
 /* --- LA VALIDACIÓN · exige club, país y ciudad --- */
 const campos = (f) => f.map(x => x.id).join(',');
-check('sin nada, faltan el club, el país y la ciudad, en el orden del formulario',
-  campos(DEMO.faltantes({})) === 'demoClub,demoPais,demoCiudad', campos(DEMO.faltantes({})));
-check('con los tres, no falta nada',
-  DEMO.faltantes({ club: 'Atenas', pais: 'Argentina', ciudad: 'La Plata' }).length === 0);
+check('sin nada, faltan el club, el WhatsApp, el país y la ciudad, en el orden del formulario',
+  campos(DEMO.faltantes({})) === 'demoClub,demoWhatsapp,demoPais,demoCiudad', campos(DEMO.faltantes({})));
+check('con los cuatro, no falta nada',
+  DEMO.faltantes({ club: 'Atenas', whatsapp: '221 555 1234', pais: 'Argentina', ciudad: 'La Plata' }).length === 0);
 check('el nombre y el rol NO son obligatorios: llegan con el propio contacto',
-  DEMO.faltantes({ club: 'Atenas', pais: 'Argentina', ciudad: 'La Plata', nombre: '', rol: '' }).length === 0);
+  DEMO.faltantes({ club: 'Atenas', whatsapp: '221 555 1234', pais: 'Argentina', ciudad: 'La Plata', nombre: '', rol: '' }).length === 0);
+check('un WhatsApp de menos de 10 dígitos falta',
+  campos(DEMO.faltantes({ club: 'A', whatsapp: '555 12', pais: 'Chile', ciudad: 'X' })) === 'demoWhatsapp');
 check('espacios en blanco no cuentan como dato',
-  campos(DEMO.faltantes({ club: '  ', pais: 'Chile', ciudad: ' ' })) === 'demoClub,demoCiudad');
+  campos(DEMO.faltantes({ club: '  ', whatsapp: '2215551234', pais: 'Chile', ciudad: ' ' })) === 'demoClub,demoCiudad');
+check('la solicitud que va al servidor dice de dónde viene',
+  DEMO.pedidoSolicitud({ club: 'A', whatsapp: '1', plan: 'Oro' }).motivo === 'plan'
+  && DEMO.pedidoSolicitud({ club: 'A', servicio: 'x' }).motivo === 'servicio'
+  && DEMO.pedidoSolicitud({ club: 'A' }).motivo === 'demo');
+check('y sale después de abrir WhatsApp, sin esperarla',
+  srcDemo.indexOf("window.open(enlace(datos)") < srcDemo.indexOf('solicitar(datos);'));
 /* Con «Otro» el país es el escrito, y el foco va a ESE campo. */
 check('«Otro» sin escribir el país falta, y apunta al campo de texto',
-  campos(DEMO.faltantes({ club: 'A', pais: '', paisOtro: true, ciudad: 'Lisboa' })) === 'demoPaisOtro');
+  campos(DEMO.faltantes({ club: 'A', whatsapp: '2215551234', pais: '', paisOtro: true, ciudad: 'Lisboa' })) === 'demoPaisOtro');
 check('enviar() valida con faltantes() antes de abrir WhatsApp',
   /const falta = faltantes\(datos\)/.test(srcDemo)
   && srcDemo.indexOf('const falta = faltantes(datos)') < srcDemo.indexOf("window.open(enlace(datos)"));
@@ -437,7 +445,7 @@ check('con un solo faltante, el aviso va en singular',
   DEMO.avisoFaltantes([{ dato: 'el país' }]));
 check('con varios, en plural y enumerados en castellano',
   DEMO.avisoFaltantes(DEMO.faltantes({}))
-    === 'Faltan el club o equipo, el país y la ciudad: van en el mensaje.',
+    === 'Faltan el club o equipo, tu WhatsApp, el país y la ciudad: van en el mensaje.',
   DEMO.avisoFaltantes(DEMO.faltantes({})));
 check('sin faltantes no hay aviso', DEMO.avisoFaltantes([]) === '');
 check('y la marca se va al escribir en el campo',

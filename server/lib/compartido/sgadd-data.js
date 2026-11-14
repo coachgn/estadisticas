@@ -206,6 +206,7 @@ const SGADD_DATA = (function () {
         const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondió ' + r.status));
         e.status = r.status;
         e.codigo = cuerpo && cuerpo.codigo;
+        avisarFinDeMuestra(e.codigo);
         throw e;
       }
       const hojas = {};
@@ -309,7 +310,7 @@ const SGADD_DATA = (function () {
       headers: { Authorization: 'Bearer ' + auth.token() },
     }).then(async (r) => {
       const cuerpo = await r.json().catch(() => null);
-      if (!r.ok || !cuerpo || !cuerpo.ok) return null;
+      if (!r.ok || !cuerpo || !cuerpo.ok) { avisarFinDeMuestra(cuerpo && cuerpo.codigo); return null; }
       return cuerpo;
     }).catch(() => null);
 
@@ -355,6 +356,7 @@ const SGADD_DATA = (function () {
     if (!r.ok || !cuerpo || !cuerpo.ok) {
       const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondió ' + r.status));
       e.codigo = (cuerpo && cuerpo.codigo) || ('HTTP_' + r.status);
+      avisarFinDeMuestra(e.codigo);
       throw e;
     }
     return cuerpo;
@@ -577,6 +579,13 @@ const SGADD_DATA = (function () {
      decía «sin backend o sin sesión» (v384). */
   function conSesion() { return !!(baseApi && auth && auth.token()); }
 
+  /* Un pase que venció, se revocó o se convirtió deja de traer datos: el
+     servidor contesta CORTESIA_<ESTADO> y la muestra muestra su cierre. */
+  function avisarFinDeMuestra(codigo) {
+    if (!/^CORTESIA_(VENCIDO|REVOCADO|CONVERTIDO|INEXISTENTE)$/.test(String(codigo || ''))) return;
+    if (typeof SGADD_CORTESIA !== 'undefined' && SGADD_CORTESIA.terminar) { try { SGADD_CORTESIA.terminar(codigo); } catch (e) {} }
+  }
+
   function rutaEstados(club, slug) {
     return '/api/v1/estados/' + encodeURIComponent(club) + '/' + encodeURIComponent(slug);
   }
@@ -782,6 +791,10 @@ const SGADD_DATA = (function () {
     return cuerpo;
   }
   function guardarCortesia(intencion, opciones) { return postConToken('/api/v1/cortesias', intencion, opciones); }
+  /* Fase 2: la solicitud de la landing (sin token) y la telemetría de la
+     muestra (con el token del pase). */
+  function paseSolicitar(datos, opciones) { return postSinToken('/api/v1/pase/solicitar', datos || {}, opciones); }
+  function paseActividad(eventos, opciones) { return postConToken('/api/v1/pase/actividad', { eventos: eventos || [] }, opciones); }
   function fijarClave(datos, opciones) { return postSinToken('/api/v1/clave', datos, opciones); }
 
   return {
@@ -789,7 +802,7 @@ const SGADD_DATA = (function () {
     matrizAFilas, matrizALegacy, tipoDeColumna,
     cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo, equiposDelLibro,
     fixtureDeTorneo, llaveDeTorneo, rivalDeTorneo, prediccionesDeZona,
-    login, fijarClave, paseConsultar, paseCanjear, cortesias, guardarCortesia, clientes, guardarClientes, fichas, guardarFicha,
+    login, fijarClave, paseConsultar, paseCanjear, paseSolicitar, paseActividad, cortesias, guardarCortesia, clientes, guardarClientes, fichas, guardarFicha,
     estadosCompartibles, conSesion, leerEstados, guardarEstados, leerPbp, ciclosSellados, sellarCiclo, ciclosGestion, ciclosGestionar, ciclosPublicar, ciclosPaquete, cerrarCiclo, ciclosPublicados, cicloFoto,
     varaJugadores, fichajesTorneos, fichajesZona, fichajesTiros, fichajesGuardarFichas, fichajesPadron, fichajesGuardarPadron,
   };

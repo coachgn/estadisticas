@@ -650,6 +650,10 @@ const SGADD_DEMO = (function () {
      que se desincronizan (punto 8). */
   const contexto = { plan: null, servicio: null };
 
+  /* Las ligas que el admin sabe resolver al aprobar: con eso elige el
+     torneo del catálogo sin preguntar. «Otra» queda escrita en el club. */
+  const LIGAS_SOLICITUD = ['Liga Nacional', 'Liga Argentina', 'APdeB · La Plata', 'ABB · Bahía Blanca', 'Otra'];
+
   function modal() {
     const plan = contexto.plan;
     const servicio = contexto.servicio;
@@ -685,6 +689,24 @@ const SGADD_DEMO = (function () {
             <input type="text" id="demoClub" autocomplete="organization"
                    placeholder="Club Atlético…" class="demo-input">
           </label>
+
+          <!-- EL WHATSAPP ES OBLIGATORIO (Fase 2 de los pases de cortesía):
+               con él la solicitud queda anotada en el Panel Master y el
+               admin le manda la muestra a ese número. -->
+          <div class="demo-fila">
+            <label class="demo-campo">
+              <span>WhatsApp</span>
+              <input type="tel" id="demoWhatsapp" autocomplete="tel" inputmode="tel"
+                     placeholder="221 555 1234" class="demo-input">
+            </label>
+            <label class="demo-campo">
+              <span>Liga o torneo</span>
+              <select id="demoLiga" class="demo-input">
+                <option value="">Elegí…</option>
+                ${LIGAS_SOLICITUD.map(l => '<option value="' + esc(l) + '">' + esc(l) + '</option>').join('')}
+              </select>
+            </label>
+          </div>
 
           <!-- PAIS Y CIUDAD van en una FILA desde 480px y apilados en el
                telefono: son un solo dato, de donde sos, partido en dos. -->
@@ -873,6 +895,8 @@ const SGADD_DEMO = (function () {
     const x = d || {};
     const f = [];
     if (!String(x.club || '').trim()) f.push({ id: 'demoClub', dato: 'el club o equipo' });
+    /* El WhatsApp: con 10 dígitos o más (código de área + número). */
+    if (String(x.whatsapp || '').replace(/\D/g, '').length < 10) f.push({ id: 'demoWhatsapp', dato: 'tu WhatsApp' });
     if (!String(x.pais || '').trim()) {
       f.push({ id: x.paisOtro ? 'demoPaisOtro' : 'demoPais', dato: 'el país' });
     }
@@ -900,6 +924,7 @@ const SGADD_DEMO = (function () {
   function enviar() {
     const datos = {
       nombre: valor('demoNombre'), rol: valor('demoRol'), club: valor('demoClub'),
+      whatsapp: valor('demoWhatsapp'), liga: valor('demoLiga'),
       pais: paisElegido(), ciudad: valor('demoCiudad'),
       paisOtro: valor('demoPais') === OTRO_PAIS,
       plan: contexto.plan,
@@ -915,7 +940,7 @@ const SGADD_DEMO = (function () {
       /* Cada campo vacío se marca además con aria-invalid: el lector de
          pantalla lo anuncia al llegar al campo, y el borde lo marca sin
          depender de leer el aviso del pie (punto 14). */
-      ['demoClub', 'demoPais', 'demoPaisOtro', 'demoCiudad'].forEach(id => {
+      ['demoClub', 'demoWhatsapp', 'demoPais', 'demoPaisOtro', 'demoCiudad'].forEach(id => {
         const n = document.getElementById(id);
         if (n) n.setAttribute('aria-invalid', falta.some(x => x.id === id) ? 'true' : 'false');
       });
@@ -924,7 +949,30 @@ const SGADD_DEMO = (function () {
       return;
     }
     window.open(enlace(datos), '_blank', 'noopener');
+    /* LA SOLICITUD QUEDA ANOTADA (Fase 2): el admin la ve en el Panel
+       Master y la aprueba con un pase. Va DESPUÉS de abrir WhatsApp —el
+       `window.open` tiene que salir en el mismo gesto o el navegador lo
+       bloquea— y sin esperar: si falla, el contacto igual está en la
+       conversación. */
+    solicitar(datos);
     cerrarModal();
+  }
+
+  /** El pedido que va al servidor. PURO y exportado. */
+  function pedidoSolicitud(d) {
+    const x = d || {};
+    return {
+      nombre: x.nombre || '', rol: x.rol || '', club: x.club || '', whatsapp: x.whatsapp || '',
+      pais: x.pais || '', ciudad: x.ciudad || '', liga: x.liga || '',
+      motivo: x.servicio ? 'servicio' : (x.plan ? 'plan' : 'demo'),
+      plan: x.plan || '', servicio: x.servicio || '',
+    };
+  }
+  function solicitar(datos) {
+    try {
+      if (typeof SGADD_DATA === 'undefined' || !SGADD_DATA.paseSolicitar || !SGADD_DATA.apiConfigurada || !SGADD_DATA.apiConfigurada()) return null;
+      return SGADD_DATA.paseSolicitar(pedidoSolicitud(datos)).catch(() => null);
+    } catch (e) { return null; }
   }
 
   /* ===================================================================
@@ -950,7 +998,7 @@ const SGADD_DEMO = (function () {
     activo, club, logo, sesion, ESCUDOS, REPARTO, LIGAS_DEMO, LIGA_DEFECTO, ligaId, ligaDemo,
     competencia, adaptarConfig, torneo, calendarioFuturo, diasACorrer, correrFechas, diaDeFecha, cargarCategoria, rehidratar,
     banner, montarBanner, reservarAlto, vigilarAlto, modal, abrirModal, cerrarModal, enviar,
-    paisCambio, faltantes, avisoFaltantes, ciudadesDe, ROLES,
+    paisCambio, faltantes, avisoFaltantes, ciudadesDe, ROLES, pedidoSolicitud, solicitar, LIGAS_SOLICITUD,
     mensaje, enlace, EQUIPO, DATOS, WHATSAPP, SESION, INICIO, PAISES, PAIS_DEFECTO,
   };
 })();

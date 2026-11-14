@@ -342,7 +342,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=384`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=385`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -17241,12 +17241,38 @@ js/sgadd-cortesia.js        la puerta del pase, la barra, los rivales de muestra
   de confirmación. Al crear: link (solo esa vez), mensaje con la voz de los mails de alta y **«Enviar por WhatsApp»**
   (`wa.me/<DT>?text=…`). La lista muestra estado, días, contactos e ingresos. Revocar no borra: el registro es el lead.
 
-### Fases que siguen
-- **Fase 2**: la demanda entrante («Agendar demo con mis datos» → solicitud `origen: 'solicitud'`, que el admin aprueba en
-  un clic), telemetría de secciones vistas, la pantalla «tu muestra terminó» y el PDF con la firma «Muestra de cortesía».
+### El play-by-play del pase (v384)
+El guard ya dejaba pasar `pbp/<torneo>/<zona>` del equipo propio; el bloqueo era del PANEL: `leerPbp` preguntaba
+`estadosCompartibles()`, que es `false` para un pase. Ahora pregunta `SGADD_DATA.conSesion()` (backend + token).
+
+### Fase 2 (v385) · demanda entrante, telemetría, cierre y firma
+- **Solicitudes de demo** (`sgadd:cortesias:solicitudes`, un campo por solicitud): el modal «Agendar demo con mis datos»
+  pide WhatsApp (10+ dígitos, obligatorio) y liga (opcional) y, DESPUÉS del `window.open` de WhatsApp y sin esperarla,
+  hace `POST /api/v1/pase/solicitar` (sin token). Mismo WhatsApp pendiente = la misma solicitud (`veces`++); tope de 300
+  pendientes (429); la respuesta no devuelve el id. Motivo `demo` / `plan` / `servicio`.
+- **Aprobar en un clic** (Panel Master → Pases de cortesía → Solicitudes): `sugerirEquipo` propone el equipo del catálogo
+  por palabras del club (filtrado por la liga; con empate no propone). «Aprobar» prellena el formulario y abre la
+  confirmación; la acción `aprobar` emite el pase con `origen: 'solicitud'` y `solicitudId` y marca la solicitud
+  `aprobada`. «Descartar» la marca `descartada`. Nada se borra.
+- **Telemetría** (`sgadd:cortesias:actividad`): `SGADD_CORTESIA.registrar('ingreso' | 'vista' | 'export')`. Un ingreso
+  por sesión, una vista por sección por sesión (sessionStorage), cada export cuenta; lote cada 1,5 s a
+  `POST /api/v1/pase/actividad`, que es la ÚNICA escritura que el guard le permite a un pase. Columna «Actividad» en el
+  Panel Master. El log local (`sgadd.paseLog.<id>`) alimenta el cierre.
+- **«Tu muestra terminó»** (`terminar`): no se cierra; resume lo explorado y ofrece «Reservar tu licencia por WhatsApp» y
+  «Volver al inicio». Sale si el pase venció al entrar, si vence con la pestaña abierta (mirada cada 5 min) o si el
+  servidor contesta `CORTESIA_VENCIDO | REVOCADO | CONVERTIDO | INEXISTENTE` en cualquier pedido.
+- **Firma en los PDF**: `encabezadoInforme` antepone «Muestra de cortesía · MotorStats AR · vence DD/MM/AAAA»
+  (`firmaPdf`) en cada hoja de las exportaciones con tabla firmada.
+- Verificado en el navegador contra la API local (KV de cortesías en memoria, catálogo y libros reales): canje → barra,
+  PBP de Boca, telemetría en el endpoint de admin, firma en el encabezado y la pantalla de cierre. **No verificado en un
+  PDF real.**
+
+### Fase que sigue
 - **Fase 3**: «Convertir en cliente» (alta prellenada y pase `convertido`) y el aviso de 2 días antes por WhatsApp/mail.
 
 ### Para producción
 1. Deploy del backend (`cd server && npx vercel --prod`): sin él, el link del pase dice «no válido».
-2. Push del front (`?v=383`, `sgadd.css` regenerado, `server/lib/compartido/sgadd-data.js` sincronizado).
+2. Push del front (`?v=385`, `sgadd.css` regenerado, `server/lib/compartido/sgadd-data.js` sincronizado).
+3. La Fase 2 necesita el deploy del backend: sin él no existen `/api/v1/pase/solicitar`, `/api/v1/pase/actividad` ni
+   las acciones `aprobar` / `descartar`.
 

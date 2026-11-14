@@ -511,7 +511,11 @@ const SGADD_UI = (function () {
      hay archivo va su nombre, chico. El equipo, su escudo o sus iniciales. */
   function encabezadoInforme(ctx) {
     const c = ctx || {};
-    const motor = '<span class="cabecera-motor"><img src="' + LOGO + '" alt="' + esc(MARCA) + '" width="16" height="16" class="pie-logo cabecera-logo"></span>';
+    /* LA FIRMA DE LA MUESTRA (Fase 2): mientras dura un pase de cortesía,
+       cada hoja dice que es una muestra y cuándo vence. Va pegada al logo,
+       en la misma fila que se repite en cada hoja. */
+    const firma = c.cortesia ? '<span class="cabecera-cortesia">' + esc(c.cortesia) + '</span>' : '';
+    const motor = '<span class="cabecera-motor">' + firma + '<img src="' + LOGO + '" alt="' + esc(MARCA) + '" width="16" height="16" class="pie-logo cabecera-logo"></span>';
     if (!c.liga && !c.equipo) return '<span class="cabecera-bloque">' + motor + '</span>';
     /* Un logo que no carga NO deja el `alt` cortado en la hoja (pasó con la
        liga: «CONFERENCIA NOR»): se esconde y aparece su nombre, que ya va
@@ -548,9 +552,12 @@ const SGADD_UI = (function () {
     if (!eq && typeof CLUB !== 'undefined' && CLUB.cfg) eq = CLUB.cfg.equipoEscudo || null;
     const urlEq = eq && typeof LOGOS !== 'undefined' && LOGOS.getUrl ? LOGOS.getUrl(eq) : null;
     const nombreEq = eq && typeof SGADD !== 'undefined' && SGADD.limpiarNombre ? SGADD.limpiarNombre(eq) : eq;
+    let cortesia = '';
+    try { cortesia = typeof SGADD_CORTESIA !== 'undefined' && SGADD_CORTESIA.firmaPdf ? SGADD_CORTESIA.firmaPdf() : ''; } catch (e) { cortesia = ''; }
     return {
       liga: (urlLiga || nombreLiga) ? { url: urlLiga, nombre: nombreLiga ? String(nombreLiga) : '' } : null,
       equipo: eq ? { url: urlEq, nombre: nombreEq } : null,
+      cortesia: cortesia,
     };
   }
 
@@ -1242,6 +1249,9 @@ const SGADD_UI = (function () {
     const limpio = sanearNombreArchivo(nombre, 'Informe');
     if (pdfTituloPrevio === null) pdfTituloPrevio = document.title;
     document.title = limpio;
+    /* La telemetría del pase de cortesía (Fase 2): todas las exportaciones
+       pasan por acá, así que es el único lugar donde contarlas. */
+    if (typeof SGADD_CORTESIA !== 'undefined') { try { SGADD_CORTESIA.registrar('export', limpio); } catch (e) {} }
 
     const restaurar = () => {
       if (pdfTituloPrevio === null) return;

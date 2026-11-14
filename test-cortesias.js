@@ -138,6 +138,7 @@ const pedido = (tok, params, query, body) => ({ headers: tok ? { authorization: 
   check('fixture y llave del torneo', ruta('GET', '/api/v1/fixture/lnb') && ruta('GET', '/api/v1/torneos/lnb/llave'));
   check('el rival de otra zona no', !ruta('GET', '/api/v1/torneos/lnb/rival'));
   check('ninguna escritura', !ruta('POST', '/api/v1/catalogo') && !ruta('POST', '/api/v1/estados/lnb/lnb-unica'));
+  check('salvo su propia telemetría', ruta('POST', '/api/v1/pase/actividad') && !ruta('GET', '/api/v1/pase/actividad') && !ruta('POST', '/api/v1/pase/solicitar'));
 
   /* TODAS las rutas registradas en la app: un token de cortesía pasa por la
      lista blanca y nada más. Una ruta nueva entra cerrada. */
@@ -145,10 +146,10 @@ const pedido = (tok, params, query, body) => ({ headers: tok ? { authorization: 
   const app = crearApp({ entorno: Object.assign({}, require('./server/lib/config.js').entorno(), { origenes: [] }), deps: deps });
   const rutas = app._router.stack.filter(l => l.route).map(l => ({ m: Object.keys(l.route.methods)[0].toUpperCase(), p: l.route.path }));
   const ABIERTAS = ['GET /api/v1/catalogo', 'GET /api/v1/equipos/:clubId', 'GET /api/v1/pbp/:clubId/:categoria',
-    'GET /api/v1/fixture/:torneo', 'GET /api/v1/torneos/:torneo/llave'];
+    'GET /api/v1/fixture/:torneo', 'GET /api/v1/torneos/:torneo/llave', 'POST /api/v1/pase/actividad'];
   const concreta = (p) => p.replace(':clubId', 'lnb').replace(':torneo', 'lnb').replace(':categoria', 'lnb-unica').replace(':zona', 'lnb-unica');
   const abiertas = rutas.filter(r => C.rutaPermitida(r.m, concreta(r.p), { categoria: 'lnb-unica' }, P)).map(r => r.m + ' ' + r.p);
-  check('de ' + rutas.length + ' rutas, el pase abre exactamente las cinco', JSON.stringify(abiertas.sort()) === JSON.stringify(ABIERTAS.slice().sort()), abiertas);
+  check('de ' + rutas.length + ' rutas, el pase abre exactamente las seis (cinco lecturas y su telemetría)', JSON.stringify(abiertas.sort()) === JSON.stringify(ABIERTAS.slice().sort()), abiertas);
   check('el guard está ANTES de las rutas', app._router.stack.findIndex(l => l.name === 'guardCortesia' || (l.handle && l.handle.length === 3 && /cortesia/.test(String(l.handle))))
     < app._router.stack.findIndex(l => l.route));
 
@@ -264,10 +265,64 @@ const pedido = (tok, params, query, body) => ({ headers: tok ? { authorization: 
   const venc = await g('/api/v1/catalogo');
   check('vencido, el guard corta y lo dice', venc.error && venc.error.body.codigo === 'CORTESIA_VENCIDO', venc.error && venc.error.body);
 
+  seccion('7 bis · Fase 2: la solicitud, la aprobación y la telemetría');
+  check('la solicitud exige el club y el WhatsApp', C.normalizarSolicitud({ nombre: 'Ana' }).faltan.join(',') === 'club,whatsapp');
+  const sol1 = await R.manejarPaseSolicitar(pedido(null, {}, {}, { nombre: 'Ana Pérez', club: 'Club Boca', whatsapp: '221 555 0001', liga: 'LNB', motivo: 'demo' }), deps);
+  check('una solicitud de la landing entra sin token', sol1.status === 200 && sol1.body.nueva === true, sol1.body);
+  check('y no devuelve su id a quien la manda', !('id' in sol1.body) && !('solicitud' in sol1.body));
+  const sol2 = await R.manejarPaseSolicitar(pedido(null, {}, {}, { club: 'Club Boca', whatsapp: '+54 9 221 555-0001', ciudad: 'La Plata' }), deps);
+  check('el mismo WhatsApp no crea otra: suma una vez más', sol2.status === 200 && sol2.body.nueva === false);
+  check('sin WhatsApp no entra', (await R.manejarPaseSolicitar(pedido(null, {}, {}, { club: 'X' }), deps)).status === 400);
+  const topeSol = C.sumarSolicitud(Object.fromEntries(Array.from({ length: C.MAX_PENDIENTES }, (_, i) => ['s' + i, { estado: 'pendiente', datos: { whatsapp: String(i) } }])), { whatsapp: '5492215550999' });
+  check('con el tope de pendientes, una nueva se rechaza', !topeSol.ok && topeSol.codigo === 'TOPE');
+
+  const listaF2 = await R.manejarCortesias(pedido(tokAdmin), deps);
+  const pend = (listaF2.body.solicitudes || []).filter(x => x.estado === 'pendiente');
+  check('el admin ve la solicitud pendiente', pend.length === 1 && pend[0].veces === 2 && pend[0].datos.ciudad === 'La Plata' && pend[0].datos.liga === 'LNB', listaF2.body.solicitudes);
+  const solId = pend[0].id;
+  check('un cliente no aprueba solicitudes', (await R.manejarCortesiasEscribir(pedido(tokBoca, {}, {}, { accion: 'aprobar', solicitudId: solId }), deps)).status === 403);
+  const sinEq = await R.manejarCortesiasEscribir(pedido(tokAdmin, {}, {}, { accion: 'aprobar', solicitudId: solId, torneo: 'lnb', zona: 'lnb-unica', dias: 7 }), deps);
+  check('aprobar sin equipo se rechaza y la solicitud sigue pendiente', sinEq.status === 400 && (await C.leerSolicitud(solId, deps)).estado === 'pendiente');
+  const apr = await R.manejarCortesiasEscribir(pedido(tokAdmin, {}, {}, { accion: 'aprobar', solicitudId: solId, torneo: 'lnb', zona: 'lnb-unica', equipo: BO, dias: 7 }), deps);
+  check('aprobar emite el pase con el link y el WhatsApp del DT', apr.status === 200 && apr.body.link && apr.body.whatsappUrl.indexOf('wa.me/5492215550001') !== -1, apr.body);
+  check('el pase queda con origen «solicitud» y su id', apr.body.pase.origen === 'solicitud' && apr.body.pase.solicitudId === solId && apr.body.pase.invitado.nombre === 'Ana Pérez');
+  const solAp = await C.leerSolicitud(solId, deps);
+  check('y la solicitud queda aprobada con el pase', solAp.estado === 'aprobada' && solAp.paseId === apr.body.pase.id);
+  check('no se aprueba dos veces', (await R.manejarCortesiasEscribir(pedido(tokAdmin, {}, {}, { accion: 'aprobar', solicitudId: solId, torneo: 'lnb', zona: 'lnb-unica', equipo: BO, dias: 7 }), deps)).status === 400);
+  await R.manejarPaseSolicitar(pedido(null, {}, {}, { club: 'Otro Club', whatsapp: '2215550002' }), deps);
+  const otra = ((await R.manejarCortesias(pedido(tokAdmin), deps)).body.solicitudes || []).find(x => x.estado === 'pendiente');
+  const desc = await R.manejarCortesiasEscribir(pedido(tokAdmin, {}, {}, { accion: 'descartar', solicitudId: otra.id }), deps);
+  check('descartar la cierra sin emitir un pase', desc.status === 200 && desc.body.solicitud.estado === 'descartada' && !desc.body.link);
+
+  const codF2 = decodeURIComponent(/pase=([^&]+)/.exec(apr.body.link)[1]);
+  const canF2 = await R.manejarPaseCanjear(pedido(null, {}, {}, { codigo: codF2, contacto: { nombre: 'Ana Pérez', whatsapp: '2215550001' } }), deps);
+  const tokF2 = canF2.body.token;
+  const actividad = async (tk, eventos) => {
+    const rq = Object.assign(pedido(tk, {}, {}, { eventos: eventos }), { method: 'POST', path: '/api/v1/pase/actividad' });
+    const gv = await R.validarPedido(rq, auth.verificarToken(tk), deps);
+    if (gv.error) return gv.error;
+    rq.cortesia = gv.pase;
+    return R.manejarPaseActividad(rq, deps);
+  };
+  const a1 = await actividad(tokF2, [{ tipo: 'ingreso' }, { tipo: 'vista', dato: 'principal' }, { tipo: 'vista', dato: 'scouting' },
+    { tipo: 'vista', dato: 'scouting' }, { tipo: 'export', dato: 'Scouting vs Rival de muestra A' }, { tipo: 'vista', dato: '<script>' }]);
+  check('el pase registra su actividad por el guard', a1.status === 200 && a1.body.sumados === 5, a1.body);
+  const actF2 = await C.leerActividad(apr.body.pase.id, deps);
+  check('ingresos, secciones y exportes contados', actF2.ingresos === 1 && actF2.secciones.scouting === 2 && actF2.secciones.principal === 1
+    && actF2.exportes['Scouting vs Rival de muestra A'] === 1, actF2);
+  check('una etiqueta que no es una sección se descarta', !Object.keys(actF2.secciones).some(k => /script/.test(k)));
+  check('sin el guard, la telemetría no atiende', (await R.manejarPaseActividad(pedido(tokF2, {}, {}, { eventos: [{ tipo: 'ingreso' }] }), deps)).status === 403);
+  check('un cliente no registra actividad de pase', (await R.manejarPaseActividad(pedido(tokBoca, {}, {}, { eventos: [{ tipo: 'ingreso' }] }), deps)).status === 403);
+  const listaAct = await R.manejarCortesias(pedido(tokAdmin), deps);
+  check('el Panel Master recibe la actividad de cada pase', (listaAct.body.pases.find(p => p.id === apr.body.pase.id) || {}).actividad.ingresos === 1);
+  await C.guardar(Object.assign({}, await C.leer(apr.body.pase.id, deps), { vence: '2020-01-01T23:59:59.999-03:00' }), deps);
+  const aVenc = await actividad(tokF2, [{ tipo: 'ingreso' }]);
+  check('vencido, tampoco registra (el guard corta)', aVenc.status === 403 && aVenc.body.codigo === 'CORTESIA_VENCIDO');
+
   seccion('8 · Lo que NO se toca');
   check('el catálogo de KV no se escribió', escrituras.indexOf(catalogo.CLAVE_KV) === -1 && store[catalogo.CLAVE_KV] === catalogoAntes);
   check('el padrón de clientes no se tocó', escrituras.every(k => !/clientes/.test(k)) && !store['sgadd:clientes']);
-  check('los pases viven solo en sgadd:cortesias', Object.keys(MEM.hashes).filter(k => Object.keys(MEM.hashes[k]).length).join(',') === C.CLAVE);
+  check('los pases, sus solicitudes y su actividad viven solo en sgadd:cortesias*', Object.keys(MEM.hashes).filter(k => Object.keys(MEM.hashes[k]).length).every(k => k === C.CLAVE || k.indexOf(C.CLAVE + ':') === 0));
 
   seccion('9 · El panel: la barra, el Panel Master y los rivales de muestra');
   const vm = require('vm');
@@ -322,6 +377,61 @@ const pedido = (tok, params, query, body) => ({ headers: tok ? { authorization: 
   const fuenteScout = fs.readFileSync('./js/sgadd-scouting.js', 'utf8');
   check('Scouting suelta a un rival de la liga elegido por el hash', /scoutCortesia\(\)[\s\S]{0,900}esRivalDeMuestra\(k\)\) SCOUT_UI\[l\] = null/.test(fuenteScout));
   check('y el selector solo ofrece al equipo propio', /!cortesia \|\| SGADD\.esEquipoPropio\(e\.clave\)/.test(fuenteScout));
+
+  seccion('10 · Fase 2 en el panel: telemetría, cierre, firma del PDF y aprobar');
+  const memoria = () => { const m = {}; return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } }; };
+  const lotes = [];
+  let venceInfo = '2099-01-10T23:59:59.999-03:00';
+  const ss2 = memoria();
+  const nodos = {};
+  const ctx2 = {
+    console, setTimeout: (f) => { ctx2.__pend = f; return 1; }, clearTimeout() {}, setInterval() { return 1; }, URL, JSON, Promise, Date, Math, Number, String, encodeURIComponent,
+    SGADD, SGADD_AUTH: { token: () => tokenPanel, leerPayload: AUTH.leerPayload },
+    SGADD_DATA: { paseActividad: async (l) => { lotes.push(l); return { ok: true }; } },
+    window: { sessionStorage: { getItem: (k) => (k === 'sgadd.paseInfo' ? JSON.stringify({ equipo: BO, vence: venceInfo, torneo: 'Liga Nacional' }) : ss2.getItem(k)), setItem: ss2.setItem },
+      localStorage: memoria(), location: { href: '' } },
+    document: { getElementById: (id) => nodos[id] || null, createElement: () => ({ set id(v) { nodos[v] = this; } }), body: { appendChild() {}, insertAdjacentHTML() {} } },
+  };
+  vm.createContext(ctx2);
+  vm.runInContext(fs.readFileSync('./js/sgadd-cortesia.js', 'utf8') + '\nthis.SGADD_CORTESIA = SGADD_CORTESIA;', ctx2);
+  const C2 = ctx2.SGADD_CORTESIA;
+  check('el ingreso se registra una vez por sesión', C2.registrar('ingreso') && !C2.registrar('ingreso'));
+  check('una vista por sección y por sesión', C2.registrar('vista', 'scouting') && !C2.registrar('vista', 'scouting') && C2.registrar('vista', 'equipos'));
+  check('una sección inventada no se registra', !C2.registrar('vista', '<img>'));
+  check('cada PDF cuenta', C2.registrar('export', 'Scouting vs Rival de muestra A') && C2.registrar('export', 'Scouting vs Rival de muestra A'));
+  await ctx2.__pend();
+  check('todo va al servidor en UN lote', lotes.length === 1 && lotes[0].length === 5 && lotes[0][0].tipo === 'ingreso', lotes);
+  const res2 = C2.resumen();
+  check('el resumen de cierre trae lo explorado', res2.ingresos === 1 && res2.secciones.map(x => x.nombre).join(',') === 'Equipos,Scouting' && res2.totalExportes === 2, res2);
+  check('la firma del PDF dice muestra y vencimiento', C2.firmaPdf() === 'Muestra de cortesía · MotorStats AR · vence 10/01/2099');
+  check('vigente, no hay cierre', !C2.vencida());
+  venceInfo = '2020-01-01T23:59:59.999-03:00';
+  check('vencida, se sabe sin preguntarle al servidor', C2.vencida());
+  const fin = C2.finHtml('CORTESIA_VENCIDO');
+  check('«Tu muestra terminó» con lo explorado y el CTA', /Tu muestra terminó/.test(fin) && /Scouting/.test(fin) && /Exportaste 2 informes/.test(fin)
+    && /Reservar tu licencia por WhatsApp/.test(fin) && fin.indexOf('wa.me/5492216143994') !== -1, fin);
+  check('el cierre no se descarta con un clic afuera ni con Esc', !/onclick="[^"]*cerrar/.test(fin) && /Volver al inicio/.test(fin));
+  check('convertido, invita a entrar con su usuario', /Ingresar/.test(C2.finHtml('CORTESIA_CONVERTIDO')) && !/Reservar/.test(C2.finHtml('CORTESIA_CONVERTIDO')));
+  check('iniciarMuestra con el pase vencido muestra el cierre', C2.iniciarMuestra() === true && /Tu muestra terminó/.test(nodos.cortesiaSlot.innerHTML));
+  tokenPanel = null;
+  check('fuera de un pase no registra nada ni firma', !C2.registrar('vista', 'principal') && C2.firmaPdf() === '');
+  tokenPanel = c1.body.token;
+
+  const UIP = require('./js/sgadd-ui.js');
+  const cab = UIP.encabezadoInforme({ liga: { nombre: 'Liga Nacional' }, equipo: { nombre: 'Boca' }, cortesia: 'Muestra de cortesía · MotorStats AR · vence 21/11/2026' });
+  check('el encabezado de cada hoja lleva la firma de la muestra', /class="cabecera-cortesia">Muestra de cortesía · MotorStats AR · vence 21\/11\/2026</.test(cab));
+  check('y sin pase, el encabezado es el de siempre', !/cabecera-cortesia/.test(UIP.encabezadoInforme({ liga: { nombre: 'X' } })));
+  const fuenteUi = fs.readFileSync('./js/sgadd-ui.js', 'utf8');
+  check('toda exportación cuenta: el registro va en tituloPdf', /function tituloPdf[\s\S]{0,700}SGADD_CORTESIA\.registrar\('export'/.test(fuenteUi));
+  check('las secciones se registran al pintar', /SGADD_CORTESIA\.registrar\('vista', section\)/.test(fs.readFileSync('./index.html', 'utf8')));
+
+  const csSug = [{ id: 'lnb', tipo: 'torneo', nombre: 'Liga Nacional 2026-27', categorias: [{ slug: 'lnb-unica', label: 'Única', activo: true,
+    equipos: [{ nombre: 'BOCA JUNIORS' }, { nombre: 'OBERA TENIS' }, { nombre: 'CLUB ATLETICO PEÑAROL' }] }] },
+    { id: 'apb', tipo: 'torneo', nombre: 'APB 2026', categorias: [{ slug: 'apb-a', activo: true, equipos: [{ nombre: "ATENAS 'A'" }, { nombre: 'BOCA LP' }] }] }];
+  const sug = C2.sugerirEquipo({ datos: { club: 'Club Atlético Boca Juniors', liga: 'Liga Nacional' } }, csSug);
+  check('propone el equipo del catálogo por el club y la liga', sug && sug.equipo === 'BOCA JUNIORS' && sug.zona === 'lnb-unica', sug);
+  check('sin la liga y con dos «Boca», no propone a ciegas', C2.sugerirEquipo({ datos: { club: 'Boca' } }, csSug) === null);
+  check('«Club Atlético» no alcanza para proponer', C2.sugerirEquipo({ datos: { club: 'Club Atlético' } }, csSug) === null);
 
   console.log('\n' + (mal ? '✗ ' + mal + ' FALLARON' : '✓ todos') + ' · ' + ok + ' ok');
   process.exit(mal ? 1 : 0);

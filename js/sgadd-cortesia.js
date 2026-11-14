@@ -218,6 +218,163 @@ const SGADD_CORTESIA = (function () {
     if (h) document.body.insertAdjacentHTML('afterbegin', h);
   }
 
+
+  /* ===================================================================
+     FASE 2 · LA TELEMETRÍA, LA PANTALLA DE CIERRE Y LA FIRMA DEL PDF
+     =================================================================== */
+
+  /* Nombres de las secciones para el resumen de cierre. Una que no esté
+     acá sale con su id capitalizado: no se esconde lo que se miró. */
+  const NOMBRES = { principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', clasificacion: 'Clasificación',
+    fixture: 'Fixture', scouting: 'Scouting', glosario: 'Glosario', simulador: 'Simulador', ciclos: 'Ciclos' };
+  const FIN = ['CORTESIA_VENCIDO', 'CORTESIA_REVOCADO', 'CORTESIA_CONVERTIDO', 'CORTESIA_INEXISTENTE'];
+
+  function paseId() {
+    try { const p = SGADD_AUTH.leerPayload(SGADD_AUTH.token()); return (p && p.cortesia) || null; } catch (e) { return null; }
+  }
+  function claveLog() { const id = paseId(); return id ? 'sgadd.paseLog.' + id : null; }
+  function almacen() { try { return window.localStorage; } catch (e) { return null; } }
+  /** Lo explorado en ESTE navegador: lo lee la pantalla de cierre. */
+  function log() {
+    const k = claveLog(), a = almacen();
+    let l = null;
+    try { l = (k && a) ? JSON.parse(a.getItem(k) || 'null') : null; } catch (e) { l = null; }
+    return Object.assign({ ingresos: 0, secciones: {}, exportes: {} }, l || {});
+  }
+  function guardarLog(l) {
+    const k = claveLog(), a = almacen();
+    try { if (k && a) a.setItem(k, JSON.stringify(l)); } catch (e) { /* sin storage: el cierre sale sin resumen */ }
+  }
+
+  /* Una vista por sección y por sesión, un ingreso por sesión: la
+     telemetría cuenta interés, no clics. */
+  const enviado = {};
+  function yaContado(k) {
+    try {
+      if (window.sessionStorage.getItem('sgadd.paseVisto.' + k)) return true;
+      window.sessionStorage.setItem('sgadd.paseVisto.' + k, '1');
+      return false;
+    } catch (e) { if (enviado[k]) return true; enviado[k] = 1; return false; }
+  }
+
+  let cola = [];
+  let reloj = null;
+  /**
+   * Registra un evento de la muestra: 'ingreso', 'vista' (con la sección)
+   * o 'export' (con el nombre del informe). Lo suma al log local y lo manda
+   * al servidor en lote, sin esperar. Fuera de un pase no hace nada.
+   */
+  function registrar(tipo, dato) {
+    if (!activa()) return false;
+    const id = paseId();
+    if (tipo === 'vista') {
+      dato = String(dato || '').toLowerCase();
+      if (!/^[a-z0-9][a-z0-9-]{0,29}$/.test(dato)) return false;
+      if (yaContado(id + '.v.' + dato)) return false;
+    } else if (tipo === 'ingreso') {
+      if (yaContado(id + '.ingreso')) return false;
+    } else if (tipo === 'export') {
+      dato = String(dato || 'Informe').slice(0, 60);
+    } else return false;
+    const l = log();
+    if (tipo === 'ingreso') l.ingresos += 1;
+    else if (tipo === 'vista') l.secciones[dato] = (l.secciones[dato] || 0) + 1;
+    else l.exportes[dato] = (l.exportes[dato] || 0) + 1;
+    guardarLog(l);
+    cola.push(tipo === 'ingreso' ? { tipo: tipo } : { tipo: tipo, dato: dato });
+    if (!reloj) reloj = setTimeout(vaciar, 1500);
+    return true;
+  }
+  function vaciar() {
+    reloj = null;
+    const lote = cola.splice(0, 20);
+    if (!lote.length || typeof SGADD_DATA === 'undefined' || !SGADD_DATA.paseActividad) return null;
+    return SGADD_DATA.paseActividad(lote).catch((e) => { if (e && FIN.indexOf(e.codigo) !== -1) terminar(e.codigo); });
+  }
+
+  /** ¿La muestra ya venció? Lo dice la fecha que vino con el canje. */
+  function vencida(ahora) {
+    const i = info();
+    return !!(i && i.vence && new Date(i.vence).getTime() <= (ahora || Date.now()));
+  }
+
+  /** El resumen de lo explorado, PURO: lo pinta el cierre y se testea. */
+  function resumen(l) {
+    const x = l || log();
+    const secs = Object.keys(x.secciones || {}).sort((a, b) => (x.secciones[b] - x.secciones[a]) || a.localeCompare(b))
+      .map(k => ({ id: k, nombre: NOMBRES[k] || (k.charAt(0).toUpperCase() + k.slice(1)), veces: x.secciones[k] }));
+    const exps = Object.keys(x.exportes || {}).map(k => ({ nombre: k, veces: x.exportes[k] }));
+    return { ingresos: x.ingresos || 0, secciones: secs, exportes: exps,
+      totalExportes: exps.reduce((t, e) => t + e.veces, 0) };
+  }
+
+  function finHtml(motivo) {
+    const i = info() || {};
+    const r = resumen();
+    const eq = legible(i.equipo || '');
+    const convertido = motivo === 'CORTESIA_CONVERTIDO';
+    const titulo = convertido ? 'Tu muestra se convirtió en tu licencia' : 'Tu muestra terminó';
+    const bajada = convertido ? 'Ya sos cliente: entrá con tu usuario y tu clave para ver el panel completo.'
+      : (motivo === 'CORTESIA_REVOCADO' ? 'La muestra de ' + esc(eq) + ' ya no está disponible.'
+        : 'La muestra de <strong>' + esc(eq) + '</strong>' + (i.vence ? ' terminó el ' + esc(fechaCorta(i.vence)) : ' terminó') + '.');
+    const lista = r.secciones.length
+      ? '<ul class="list-disc pl-5 text-sm text-ink">' + r.secciones.map(x => '<li>' + esc(x.nombre) + (x.veces > 1 ? ' <span class="text-muted">· ' + x.veces + ' sesiones</span>' : '') + '</li>').join('') + '</ul>'
+      : '<p class="text-sm text-muted">No quedó registro de lo que miraste en este navegador.</p>';
+    const exp = r.totalExportes ? '<p class="text-sm text-ink mt-2">Exportaste ' + r.totalExportes + ' informe' + (r.totalExportes === 1 ? '' : 's') + ' en PDF.</p>' : '';
+    return `<div class="login-fondo" id="cortesiaFin" role="dialog" aria-modal="true" aria-labelledby="cortesiaFinTitulo">
+      <div class="login-caja card rounded-xl p-5 border border-hairline">
+        <div class="flex items-center gap-2 mb-3"><img src="logos/motorlogo-64.png" alt="" width="28" height="28" class="rounded-full" onerror="this.style.display='none'">
+          <span class="font-display uppercase tracking-wide text-[11px] text-muted">Muestra de cortesía · MotorStats AR</span></div>
+        <h2 id="cortesiaFinTitulo" class="font-display uppercase tracking-wide text-base text-ink mb-1">${titulo}</h2>
+        <p class="text-sm text-ink mb-3">${bajada}</p>
+        ${convertido ? '' : `<p class="text-[10px] uppercase tracking-wider text-muted font-display mb-1">Lo que exploraste${r.ingresos ? ' · ' + r.ingresos + ' ingreso' + (r.ingresos === 1 ? '' : 's') : ''}</p>
+        ${lista}${exp}
+        <p class="text-sm text-ink mt-3">Con la licencia tenés todo esto con tus rivales reales, cargado solo después de cada fecha.</p>`}
+        <div class="modal-acciones flex flex-wrap items-center gap-3 mt-4">
+          ${convertido ? '' : `<a href="${esc(urlReserva())}" target="_blank" rel="noopener" class="font-semibold text-sm rounded-md px-4 py-2" style="background:#25d366;color:#052e16">Reservar tu licencia por WhatsApp</a>`}
+          <button type="button" onclick="SGADD_CORTESIA.salir()" class="text-xs border border-hairline rounded px-3 py-2 hover:bg-surface2">${convertido ? 'Ingresar' : 'Volver al inicio'}</button>
+        </div>
+      </div></div>`;
+  }
+
+  let terminada = false;
+  /** Muestra el cierre. No se cierra con Esc ni con un clic afuera: la
+      muestra terminó y el panel atrás ya no trae datos. */
+  function terminar(motivo) {
+    if (terminada || typeof document === 'undefined') return false;
+    terminada = true;
+    const s = slot();
+    s.innerHTML = finHtml(motivo || 'CORTESIA_VENCIDO');
+    const b = document.getElementById('cortesiaBarra');
+    if (b) b.remove();
+    return true;
+  }
+  function salir() {
+    if (typeof SGADD_LOGIN !== 'undefined' && SGADD_LOGIN.salir) return SGADD_LOGIN.salir();
+    try { SGADD_AUTH.limpiarToken(); SGADD_AUTH.limpiarSesion(); window.localStorage.removeItem('sgadd.token'); } catch (e) {}
+    window.location.href = 'index.html';
+    return null;
+  }
+
+  /** Al arrancar con el token de un pase: el cierre si ya venció; si no,
+      el ingreso, la barra y una mirada cada 5 minutos por si vence con la
+      pestaña abierta. */
+  function iniciarMuestra() {
+    if (!activa()) return false;
+    if (vencida()) return terminar('CORTESIA_VENCIDO');
+    registrar('ingreso');
+    montarBarra();
+    try { setInterval(() => { if (vencida()) terminar('CORTESIA_VENCIDO'); }, 5 * 60 * 1000); } catch (e) {}
+    return true;
+  }
+
+  /** La firma de las exportaciones mientras dura la muestra. */
+  function firmaPdf() {
+    if (!activa()) return '';
+    const i = info() || {};
+    return 'Muestra de cortesía · MotorStats AR' + (i.vence ? ' · vence ' + fechaCorta(i.vence) : '');
+  }
+
   /* -------------------------------------------- los rivales de la muestra */
 
   const DEMO = { promesa: null, lista: [], seriales: {} };
@@ -261,8 +418,8 @@ const SGADD_CORTESIA = (function () {
      ===================================================================== */
   const DIAS = [3, 5, 7, 10, 15];
   const AYUDA = 'El pase da el Plan PLATA sobre su equipo: Scouting con rivales de muestra anonimizados.';
-  const adm = { abierto: false, cargado: false, cargando: false, error: '', pases: [], envio: null, yendo: false,
-    f: { torneo: '', zona: '', equipo: '', dias: 7, diasLibre: '', nombre: '', whatsapp: '', email: '', nota: '', pbp: true } };
+  const adm = { abierto: false, cargado: false, cargando: false, error: '', pases: [], solicitudes: [], envio: null, yendo: false, aviso: '',
+    f: { torneo: '', zona: '', equipo: '', dias: 7, diasLibre: '', nombre: '', whatsapp: '', email: '', nota: '', pbp: true, solicitudId: '' } };
   let clubesAdmin = [];
 
   function torneosDe(cs) { return (cs || []).filter(c => c.tipo === 'torneo'); }
@@ -283,7 +440,7 @@ const SGADD_CORTESIA = (function () {
 
   function cargarPases() {
     adm.cargando = true; adm.error = '';
-    return SGADD_DATA.cortesias().then((r) => { adm.pases = r.pases || []; adm.cargado = true; adm.cargando = false; repintarAdmin(); })
+    return SGADD_DATA.cortesias().then((r) => { adm.pases = r.pases || []; adm.solicitudes = r.solicitudes || []; adm.cargado = true; adm.cargando = false; repintarAdmin(); })
       .catch((e) => { adm.cargando = false; adm.cargado = true; adm.error = (e && e.message) || 'No se pudieron leer los pases.'; repintarAdmin(); });
   }
 
@@ -333,9 +490,13 @@ const SGADD_CORTESIA = (function () {
         ${lab('Nota interna (opcional)', inp('nota', 'text', 'De dónde vino, qué le interesa…'))}
         <label class="flex items-center gap-2 text-xs text-ink py-2"><input type="checkbox" ${f.pbp ? 'checked' : ''} onchange="SGADD_CORTESIA.adminCampo('pbp', this.checked)"> Incluir el play-by-play de su equipo</label>
       </div>
+      ${adm.aviso ? `<p class="text-[12px] mt-3 zona-texto zona-aviso" role="status">${esc(adm.aviso)}</p>` : ''}
       <p id="cortesiaAdmFalta" class="text-[11px] text-muted mt-3">${falta.length ? 'Falta ' + esc(falta.join(', ')) + '.' : esc(AYUDA)}</p>
-      <button id="cortesiaAdmCrear" type="button" onclick="SGADD_CORTESIA.adminCrear()" ${falta.length || adm.yendo ? 'disabled' : ''}
-        class="mt-2 bg-accent text-base font-semibold text-sm rounded-md px-4 py-2 disabled:opacity-50">${adm.yendo ? 'Guardando…' : 'Crear el pase'}</button>`;
+      <div class="flex flex-wrap items-center gap-3 mt-2">
+        <button id="cortesiaAdmCrear" type="button" onclick="SGADD_CORTESIA.adminCrear()" ${falta.length || adm.yendo ? 'disabled' : ''}
+          class="bg-accent text-base font-semibold text-sm rounded-md px-4 py-2 disabled:opacity-50">${adm.yendo ? 'Guardando…' : (f.solicitudId ? 'Aprobar y emitir el pase' : 'Crear el pase')}</button>
+        ${f.solicitudId ? '<button type="button" onclick="SGADD_CORTESIA.adminSoltarSolicitud()" class="text-xs text-muted hover:text-ink">Cancelar la aprobación</button>' : ''}
+      </div>`;
   }
 
   function adminEnvioHtml() {
@@ -357,7 +518,7 @@ const SGADD_CORTESIA = (function () {
     if (adm.error) return `<p class="text-xs mt-4" style="color:#f87171" role="alert">${esc(adm.error)}</p>`;
     if (!adm.pases.length) return '<p class="text-xs text-muted mt-4">Todavía no hay pases.</p>';
     return `<div class="scrollbox mt-4"><table class="w-full text-xs">
-      <thead><tr><th>Equipo</th><th>Torneo · zona</th><th>Entrenador</th><th>Estado</th><th>Ingresos</th><th></th></tr></thead>
+      <thead><tr><th>Equipo</th><th>Torneo · zona</th><th>Entrenador</th><th>Estado</th><th>Ingresos</th><th>Actividad</th><th></th></tr></thead>
       <tbody>${adm.pases.map(p => {
         const c = p.contactos || [];
         const inv = p.invitado || {};
@@ -367,12 +528,83 @@ const SGADD_CORTESIA = (function () {
           <td>${esc(inv.nombre || '')}<br><a class="text-muted" href="https://wa.me/${esc(inv.whatsapp || '')}" target="_blank" rel="noopener">+${esc(inv.whatsapp || '')}</a></td>
           <td>${chipEstado(p)}<br><span class="text-muted">hasta ${esc(fechaCorta(p.vence))}</span></td>
           <td title="${esc(c.map(x => x.nombre + ' · +' + x.whatsapp + (x.rol ? ' · ' + x.rol : '')).join(' | '))}">${p.usos || 0}<br><span class="text-muted">${c.length} contacto${c.length === 1 ? '' : 's'}${p.ultimoUso ? ' · ' + esc(fechaCorta(p.ultimoUso)) : ''}</span></td>
+          <td>${actividadHtml(p.actividad)}</td>
           <td class="whitespace-nowrap">
             <button type="button" onclick="SGADD_CORTESIA.adminAccion('regenerar','${esc(p.id)}')" class="border border-hairline rounded px-2 py-1 hover:bg-surface2">Reenviar</button>
             <button type="button" onclick="SGADD_CORTESIA.adminAccion('extender','${esc(p.id)}')" class="border border-hairline rounded px-2 py-1 hover:bg-surface2">+${diasElegidos() || 7} d</button>
             ${p.estado === 'activo' ? `<button type="button" onclick="SGADD_CORTESIA.adminAccion('revocar','${esc(p.id)}')" class="border border-hairline rounded px-2 py-1 hover:bg-surface2" style="color:#f87171">Revocar</button>` : ''}
           </td></tr>`;
       }).join('')}</tbody></table></div>`;
+  }
+
+  /* La actividad de un pase en una celda: ingresos, secciones y PDF. Las
+     secciones van de la más mirada a la menos, con el detalle en el title. */
+  function actividadHtml(a) {
+    if (!a) return '<span class="text-muted">sin registro</span>';
+    const r = resumen(a);
+    const top = r.secciones.slice(0, 3).map(x => x.nombre).join(', ');
+    const detalle = r.secciones.map(x => x.nombre + ' ×' + x.veces).concat(r.exportes.map(x => 'PDF ' + x.nombre + ' ×' + x.veces)).join(' | ');
+    return `<span title="${esc(detalle)}">${a.ingresos || 0} ingreso${a.ingresos === 1 ? '' : 's'} · ${r.totalExportes} PDF`
+      + `<br><span class="text-muted">${esc(top || 'sin secciones')}${r.secciones.length > 3 ? '…' : ''}</span></span>`;
+  }
+
+  /* ¿Qué equipo del catálogo es el club que escribió? PURA. Cruza las
+     palabras del club con los equipos de los torneos (sin las que no
+     distinguen: «club», «atlético»…), y si la solicitud dice la liga, solo
+     mira los torneos de esa liga. Con empate no propone. */
+  const NO_DISTINGUEN = ['club', 'atletico', 'social', 'y', 'de', 'del', 'la', 'el', 'los', 'las', 'asociacion',
+    'sociedad', 'cultural', 'biblioteca', 'basquet', 'basket', 'mm', 'cab', 'ca'];
+  const LIGA_A_TORNEO = { 'Liga Nacional': /nacional|lnb/i, 'Liga Argentina': /liga argentina|lab/i,
+    'APdeB · La Plata': /apb|apdeb|la plata/i, 'ABB · Bahía Blanca': /bah[ií]a/i };
+  function palabras(t) {
+    return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+      .replace(/['".()-]/g, ' ').split(/\s+/).filter(w => w.length > 1 && NO_DISTINGUEN.indexOf(w) === -1);
+  }
+  function sugerirEquipo(sol, cs) {
+    const d = (sol && sol.datos) || {};
+    const pc = palabras(d.club);
+    if (!pc.length) return null;
+    const filtro = LIGA_A_TORNEO[d.liga] || null;
+    const cand = [];
+    torneosDe(cs).forEach(t => {
+      if (filtro && !filtro.test((t.nombre || '') + ' ' + t.id)) return;
+      zonasDe(t).forEach(z => (z.equipos || []).forEach(e => {
+        const pe = palabras(e.nombre);
+        const comunes = pc.filter(w => pe.indexOf(w) !== -1).length;
+        if (comunes) cand.push({ torneo: t.id, zona: z.slug, equipo: e.nombre, puntaje: comunes / Math.max(pc.length, pe.length) });
+      }));
+    });
+    cand.sort((a, b) => b.puntaje - a.puntaje);
+    if (!cand.length || (cand[1] && cand[1].puntaje === cand[0].puntaje)) return null;
+    return cand[0];
+  }
+
+  function adminSolicitudesHtml() {
+    const pend = (adm.solicitudes || []).filter(x => x.estado === 'pendiente');
+    const cerradas = (adm.solicitudes || []).filter(x => x.estado !== 'pendiente').length;
+    if (!adm.cargado) return '';
+    const fila = (x) => {
+      const d = x.datos || {};
+      const sug = sugerirEquipo(x, clubesAdmin);
+      const motivo = d.motivo === 'plan' ? 'plan ' + (d.plan || '') : (d.motivo === 'servicio' ? d.servicio : 'demo con sus datos');
+      return `<tr>
+        <td><strong>${esc(d.club)}</strong><br><span class="text-muted">${esc([d.ciudad, d.pais].filter(Boolean).join(', '))}</span></td>
+        <td>${esc(d.nombre || '—')}${d.rol ? '<br><span class="text-muted">' + esc(d.rol) + '</span>' : ''}</td>
+        <td><a href="https://wa.me/${esc(d.whatsapp)}" target="_blank" rel="noopener">+${esc(d.whatsapp)}</a></td>
+        <td>${esc(d.liga || '—')}<br><span class="text-muted">${esc(motivo)}</span></td>
+        <td>${esc(fechaCorta(x.ultima || x.creada))}${x.veces > 1 ? '<br><span class="text-muted">' + x.veces + ' veces</span>' : ''}</td>
+        <td>${sug ? esc(sug.equipo) : '<span class="text-muted">elegir</span>'}</td>
+        <td class="whitespace-nowrap">
+          <button type="button" onclick="SGADD_CORTESIA.adminAprobar('${esc(x.id)}')" class="bg-accent text-base font-semibold rounded px-2 py-1">Aprobar</button>
+          <button type="button" onclick="SGADD_CORTESIA.adminDescartar('${esc(x.id)}')" class="border border-hairline rounded px-2 py-1 hover:bg-surface2">Descartar</button>
+        </td></tr>`;
+    };
+    return `<div class="mt-5" data-cortesia-solicitudes="1">
+      <p class="font-display uppercase tracking-wide text-xs text-ink mb-1">Solicitudes de demo · ${pend.length} pendiente${pend.length === 1 ? '' : 's'}${cerradas ? ' <span class="text-muted normal-case">(' + cerradas + ' cerradas)</span>' : ''}</p>
+      ${pend.length ? `<p class="text-[11px] text-muted mb-2">Llegan desde «Agendar demo con mis datos». «Aprobar» completa el pase con sus datos y el equipo propuesto: revisalo antes de confirmar.</p>
+      <div class="scrollbox"><table class="w-full text-xs"><thead><tr><th>Club</th><th>Quién</th><th>WhatsApp</th><th>Liga · motivo</th><th>Cuándo</th><th>Equipo propuesto</th><th></th></tr></thead>
+      <tbody>${pend.map(fila).join('')}</tbody></table></div>` : '<p class="text-xs text-muted">No hay solicitudes pendientes.</p>'}
+    </div>`;
   }
 
   function adminHtml(cs) {
@@ -382,7 +614,7 @@ const SGADD_CORTESIA = (function () {
       ontoggle="SGADD_CORTESIA.adminToggle(this.open)">
       <summary class="cursor-pointer p-4 sm:p-5"><span class="font-display uppercase tracking-wide text-sm text-ink">🎟 Pases de cortesía</span>
         <span class="text-[11px] text-muted ml-2">una muestra con datos reales, sin dar de alta un cliente</span></summary>
-      <div class="px-4 sm:px-5 pb-4 sm:pb-5">${adm.abierto ? adminFormHtml(clubesAdmin) + adminEnvioHtml() + adminListaHtml() : ''}</div>
+      <div class="px-4 sm:px-5 pb-4 sm:pb-5">${adm.abierto ? adminSolicitudesHtml() + '<div id="cortesiaAdmForm" class="mt-5">' + adminFormHtml(clubesAdmin) + '</div>' + adminEnvioHtml() + adminListaHtml() : ''}</div>
     </details>`;
   }
   function repintarAdmin() {
@@ -419,6 +651,7 @@ const SGADD_CORTESIA = (function () {
       adm.yendo = true; adm.error = ''; repintarAdmin();
       return SGADD_DATA.guardarCortesia(intencion).then((r) => {
         adm.yendo = false;
+        if (intencion.accion === 'aprobar') { adm.f.solicitudId = ''; adm.aviso = ''; }
         if (r.link) adm.envio = { pase: r.pase, link: r.link, mensaje: r.mensaje, whatsappUrl: r.whatsappUrl };
         return cargarPases();
       }).catch((e) => { adm.yendo = false; adm.error = (e && e.message) || 'No se pudo guardar.'; repintarAdmin(); });
@@ -434,13 +667,42 @@ const SGADD_CORTESIA = (function () {
     const f = adm.f, d = diasElegidos();
     const t = torneosDe(clubesAdmin).find(x => x.id === f.torneo) || {};
     const z = zonasDe(t).find(k => k.slug === f.zona) || {};
-    return hacer({ accion: 'crear', torneo: f.torneo, zona: f.zona, equipo: f.equipo, dias: d, pbp: f.pbp, nota: f.nota,
+    const aprobando = !!f.solicitudId;
+    return hacer({ accion: aprobando ? 'aprobar' : 'crear', solicitudId: f.solicitudId || undefined,
+      torneo: f.torneo, zona: f.zona, equipo: f.equipo, dias: d, pbp: f.pbp, nota: f.nota,
       invitado: { nombre: f.nombre, whatsapp: f.whatsapp, email: f.email } }, [
       { label: 'Equipo', antes: '—', despues: f.equipo },
       { label: 'Zona', antes: '—', despues: (t.nombre || f.torneo) + ' · ' + (z.label || f.zona) },
       { label: 'Vigencia', antes: '—', despues: d + ' días · Plan PLATA' + (f.pbp ? ' + play-by-play' : '') },
       { label: 'Entrenador', antes: '—', despues: f.nombre + ' · ' + f.whatsapp },
-    ], 'Crear el pase de cortesía', 'Crear el pase');
+    ].concat(aprobando ? [{ label: 'Solicitud', antes: 'pendiente', despues: 'aprobada con este pase' }] : []),
+    aprobando ? 'Aprobar la solicitud y emitir el pase' : 'Crear el pase de cortesía', aprobando ? 'Aprobar y emitir' : 'Crear el pase');
+  }
+
+  /* APROBAR CON UN CLIC: completa el formulario con los datos de la
+     solicitud y el equipo propuesto. Si no falta nada, abre directo el
+     modal de confirmación; si falta (el equipo no se pudo proponer), lo
+     dice y deja el formulario a la vista para elegirlo. */
+  function adminAprobar(id) {
+    const x = (adm.solicitudes || []).find(y => y.id === id);
+    if (!x) return null;
+    const d = x.datos || {};
+    const sug = sugerirEquipo(x, clubesAdmin);
+    Object.assign(adm.f, { solicitudId: id, nombre: d.nombre || d.club || '', whatsapp: d.whatsapp || '', email: d.email || '',
+      nota: 'Solicitud de la landing · ' + (d.club || '') + (d.liga ? ' · ' + d.liga : ''),
+      torneo: sug ? sug.torneo : '', zona: sug ? sug.zona : '', equipo: sug ? sug.equipo : '' });
+    adm.aviso = sug ? '' : 'No encontré el equipo de «' + (d.club || '') + '» en el catálogo: elegí el torneo, la zona y el equipo, y aprobá.';
+    repintarAdmin();
+    if (!faltanAdmin().length) return adminCrear();
+    const n = typeof document !== 'undefined' && document.getElementById('cortesiaAdmForm');
+    if (n && n.scrollIntoView) n.scrollIntoView({ block: 'start' });
+    return null;
+  }
+  function adminSoltarSolicitud() { adm.f.solicitudId = ''; adm.aviso = ''; repintarAdmin(); }
+  function adminDescartar(id) {
+    const x = (adm.solicitudes || []).find(y => y.id === id) || {};
+    return hacer({ accion: 'descartar', solicitudId: id }, [{ label: 'Solicitud', antes: 'pendiente · ' + ((x.datos && x.datos.club) || ''), despues: 'descartada (no se emite un pase)' }],
+      'Descartar la solicitud', 'Descartar');
   }
   function adminAccion(accion, id) {
     const p = adm.pases.find(x => x.id === id) || {};
@@ -460,8 +722,10 @@ const SGADD_CORTESIA = (function () {
   }
 
   return { activa, info, abrir, cerrar: () => { estado.abierto = false; pintar(); }, campo, enviar,
+    registrar, vaciar, log, resumen, vencida, terminar, finHtml, salir, iniciarMuestra, firmaPdf, FIN,
     barra, montarBarra, urlReserva, cargarRivales, rivales, esRivalDeMuestra, serial, diasRestantes, ROLES,
     adminHtml, adminToggle, adminCampo, adminElegir, adminDias, adminCrear, adminAccion, adminCopiar, faltanAdmin,
+    adminAprobar, adminDescartar, adminSoltarSolicitud, sugerirEquipo, actividadHtml,
     _adm: adm };
 })();
 
