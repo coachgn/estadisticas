@@ -178,8 +178,15 @@ async function ejecutar(deps) {
     if (aviso.dias === 5) datos.balance = balance(catalogo, aviso.clubId, aviso.slug, ficha, padron, hoy, ahora);
     resultados.push(await despachar(aviso, () => P.recordatorio(datos, aviso.dias), Object.assign({}, d, { ahora: ahora })));
   }
+  /* LOS PASES DE CORTESÍA (fase 3): el aviso del día -2, en la MISMA
+     corrida. Va aparte y con su propio try: un problema con los pases no
+     puede frenar los recordatorios de los clientes que pagan. */
+  let cortesias;
+  try { cortesias = await avisosCortesia(Object.assign({}, d, { ahora: ahora })); }
+  catch (e) { cortesias = { error: e.codigo || 'ERROR', mensaje: e.message }; }
   return {
     hoy: hoy,
+    cortesias: cortesias,
     enviados: resultados.filter(r => r.resultado === 'enviado').length,
     errores: resultados.filter(r => r.resultado === 'error').length,
     resultados: resultados,
@@ -222,6 +229,53 @@ async function enviarBienvenida(clubId, slug, deps) {
   return despachar(Object.assign(base, { idHito: idHito }), () => P.bienvenida(datos), d);
 }
 
+/**
+ * EL AVISO DEL DÍA -2 DE LOS PASES DE CORTESÍA.
+ *
+ * Dos guardas contra el duplicado, y hacen falta las dos: el reclamo
+ * ATÓMICO en `sgadd:notificaciones` (dos corridas a la vez mandan uno) y la
+ * marca `avisoD2` en el pase (la lista del Panel Master lo muestra, y el
+ * planificador lo saltea). Las dos llevan el vencimiento: extender el pase
+ * mueve la fecha y el aviso vuelve a corresponder. Si el envío falla, se
+ * libera el reclamo y sale en la corrida siguiente — si todavía es el día.
+ */
+async function avisosCortesia(deps) {
+  const C = require('./cortesias.js');
+  const d = deps || {};
+  const ahora = d.ahora === undefined ? Date.now() : d.ahora;
+  const pases = await C.listar(d);
+  const plan = C.planificarAvisosD2(pases, { ahora: ahora });
+  const resultados = [];
+  for (const a of plan.avisos) {
+    const pase = pases[a.id];
+    const gano = await fichas.reclamar(a.idHito, d);
+    if (!gano) { resultados.push({ id: a.id, resultado: 'ya reclamado por otra corrida' }); continue; }
+    let mail;
+    try {
+      mail = P.recordatorioCortesia({ nombre: C.nombreDelPase(pase), equipo: C.equipoLegible(pase.equipo),
+        torneo: pase.torneoNombre || pase.torneo, vence: a.vence, url: d.panelUrl });
+      await d.transporte.enviar({ para: a.para, asunto: mail.asunto, html: mail.html, texto: mail.texto });
+    } catch (e) {
+      await fichas.liberar(a.idHito, d).catch(() => {});
+      resultados.push({ id: a.id, para: a.para, resultado: 'error', codigo: e.codigo || 'ERROR', mensaje: e.message });
+      continue;
+    }
+    /* La marca va sobre el pase RECIÉN LEÍDO: en el medio pudo haber un
+       canje que sumó un contacto, y escribir la copia de arriba lo borraría. */
+    const actual = (await C.leer(a.id, d)) || pase;
+    await C.guardar(Object.assign({}, actual, { avisoD2: { vence: a.vence,
+      enviado: new Date(ahora).toISOString(), para: a.para } }), d);
+    resultados.push({ id: a.id, para: a.para, resultado: 'enviado', asunto: mail.asunto });
+  }
+  return {
+    enviados: resultados.filter(r => r.resultado === 'enviado').length,
+    errores: resultados.filter(r => r.resultado === 'error').length,
+    resultados: resultados,
+    omitidos: plan.omitidos,
+  };
+}
+
 module.exports = {
+  avisosCortesia,
   DESFASAJE_AR_MS, hoyAR, diasEntre, urlPanel, datosCliente, balance, planificar, despachar, ejecutar, enviarBienvenida,
 };

@@ -20,6 +20,11 @@ const AUTHS = require('../lib/auth.js');
 const AUTH = require('../lib/compartido/sgadd-auth.js');
 const CORE = require('../lib/compartido/sgadd-core.js');
 const WHATSAPP_MS = require('../lib/mail-plantillas.js').WHATSAPP;
+const mutar = require('../lib/catalogo-mutar.js');
+const fichas = require('../lib/fichas.js');
+const invitacion = require('../lib/invitacion.js');
+const cron = require('../lib/cron-vencimientos.js');
+const envioMail = require('../lib/mail-envio.js');
 
 function error(status, codigo, mensaje, extra) {
   return { status: status, body: Object.assign({ ok: false, codigo: codigo, mensaje: mensaje }, extra || {}) };
@@ -151,6 +156,8 @@ async function manejarCortesiasEscribir(peticion, deps) {
     return { status: 200, body: Object.assign({ ok: true, pase: C.paraAdmin(r.pase) }, envio(r.pase, r.codigo)) };
   }
 
+  if (accion === 'convertir') return convertir(b, s, deps);
+
   if (['revocar', 'regenerar', 'extender'].indexOf(accion) === -1) {
     return error(400, 'ACCION', 'Acción desconocida.');
   }
@@ -180,6 +187,90 @@ async function manejarCortesiasEscribir(peticion, deps) {
   const nuevo = Object.assign({}, pase, { estado: 'activo', dias: dias, vence: C.venceDe(dias, new Date()) });
   await C.guardar(nuevo, deps);
   return { status: 200, body: { ok: true, pase: C.paraAdmin(nuevo) } };
+}
+
+/* ------------------------------------------------- FASE 3 · convertir */
+
+/**
+ * EL PASE SE CONVIERTE EN CLIENTE con el alta de siempre, en este orden:
+ *
+ *   1. el CATÁLOGO · `mutar.aplicar('alta')` sobre el catálogo de KV recién
+ *      leído, con `libroDe` = la zona del pase: la categoría queda leyendo
+ *      ese libro y enganchada a esa zona, con el equipo del pase y el plan;
+ *   2. la FICHA · contacto, mail institucional y fecha de alta;
+ *   3. el ACCESO · `invitacion.asegurar()`, el mismo camino de «Quiénes
+ *      pueden entrar» (cupo, un mail por club, el admin que no se da de alta);
+ *   4. la BIENVENIDA con el código adentro;
+ *   5. el PASE pasa a `convertido`, con a qué club y categoría.
+ *
+ * Es la ÚNICA acción de cortesías que escribe `sgadd:catalogo` y
+ * `sgadd:clientes`, y lo hace por los mismos módulos que el Panel Master:
+ * dos caminos de alta terminarían con uno que se saltea el cupo.
+ *
+ * Si falla el catálogo, no se toca nada más. Si falla el mail, el alta
+ * queda hecha y la respuesta lo dice: el admin puede reenviar la
+ * bienvenida desde la ficha del cliente.
+ */
+async function convertir(b, s, deps) {
+  let pase;
+  try { pase = await C.leer(b.id, deps); }
+  catch (e) { return error(503, 'KV', 'No se pudo leer el pase.'); }
+  if (!pase) return error(404, 'SIN_PASE', 'Ese pase no existe.');
+  if (pase.estado === 'convertido') return error(400, 'CONVERTIDO', 'Ese pase ya se convirtió en cliente.');
+
+  const conv = C.datosDeConversion(pase, b);
+  if (!conv.ok) return error(400, conv.codigo, conv.mensaje);
+  const v = conv.datos;
+
+  /* El catálogo se escribe con el MISMO cliente de KV con que lo lee
+     `cargarParaEscribir` (el del módulo), igual que el padrón de accesos:
+     `deps.kv` es el almacén de los hashes (pases, fichas, avisos). */
+  const almacen = require('../lib/kv.js');
+  if (!almacen.configurado(deps && deps.env)) return error(503, 'SIN_KV', 'El servidor no tiene Upstash configurado.');
+  let cascada;
+  try { cascada = await catalogo.cargarParaEscribir(deps); }
+  catch (e) { return error(503, e.codigo || 'KV_ILEGIBLE', e.message); }
+  const existente = cascada.catalogo[v.club];
+  if (existente && existente.tipo === 'torneo') return error(400, 'CLUB', 'Ese id es de un torneo: elegí otro para el club.');
+  if (existente && (existente.categorias || {})[v.categoria]) {
+    return error(400, 'CATEGORIA', 'Ese club ya tiene la categoría ' + v.categoria + '. Elegí otro id de categoría.');
+  }
+  const r = mutar.aplicar(cascada.catalogo, 'alta', v, catalogo.validar);
+  if (!r.ok) return error(400, 'CATALOGO_INVALIDO', r.motivo);
+  try { await almacen.escribir(catalogo.CLAVE_KV, r.catalogo); }
+  catch (e) { return error(502, e.codigo || 'KV', 'No se pudo escribir el catálogo: ' + e.message); }
+  catalogo.limpiarCache();
+
+  /* La ficha y el pase se guardan aunque el mail no salga. */
+  const hoy = cron.hoyAR(deps && deps.ahora);
+  try { await fichas.guardar(v.club, v.categoria, { contacto: conv.contacto || null, email: conv.email, fechaAlta: hoy, renovacion: 'mensual' }, deps); }
+  catch (e) { /* sin ficha la bienvenida sale igual: el mail va por `para` */ }
+
+  let acceso = null, bienvenida = null;
+  try {
+    acceso = await invitacion.asegurar(v.club, conv.email, r.catalogo, deps, conv.contacto);
+  } catch (e) {
+    bienvenida = { resultado: 'error', codigo: e.codigo || 'KV', mensaje: 'No se pudo leer el padrón de accesos: la bienvenida no salió.' };
+  }
+  if (!bienvenida) {
+    try {
+      bienvenida = await cron.enviarBienvenida(v.club, v.categoria, Object.assign({}, deps, {
+        catalogo: r.catalogo, forzar: true, para: conv.email, contacto: conv.contacto,
+        transporte: (deps && deps.transporte) || envioMail.transporteSmtp({ env: deps && deps.env }),
+        invitacion: invitacion.paraElMail(acceso) }));
+    } catch (e) {
+      bienvenida = { resultado: 'error', codigo: e.codigo || 'ERROR', mensaje: e.message };
+    }
+  }
+
+  const actual = (await C.leer(pase.id, deps).catch(() => null)) || pase;
+  const nuevo = C.marcarConvertido(actual, { club: v.club, categoria: v.categoria, plan: v.plan,
+    email: conv.email, por: s.v.sesion.email, bienvenida: bienvenida ? bienvenida.resultado : null }, { ahora: deps && deps.ahora });
+  try { await C.guardar(nuevo, deps); }
+  catch (e) { return error(503, 'KV', 'El cliente quedó dado de alta, pero no se pudo marcar el pase como convertido.'); }
+
+  return { status: 200, body: { ok: true, pase: C.paraAdmin(nuevo), club: v.club, categoria: v.categoria,
+    plan: v.plan, email: conv.email, creoClub: !!r.creoClub, acceso: acceso, bienvenida: bienvenida } };
 }
 
 /* ------------------------------------------------------------ la puerta */

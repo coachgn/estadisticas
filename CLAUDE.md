@@ -342,7 +342,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=385`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=386`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -17267,12 +17267,39 @@ El guard ya dejaba pasar `pbp/<torneo>/<zona>` del equipo propio; el bloqueo era
   PBP de Boca, telemetría en el endpoint de admin, firma en el encabezado y la pantalla de cierre. **No verificado en un
   PDF real.**
 
-### Fase que sigue
-- **Fase 3**: «Convertir en cliente» (alta prellenada y pase `convertido`) y el aviso de 2 días antes por WhatsApp/mail.
+### Fase 3 (v386) · convertir en cliente y el aviso del día −2
+- **«Convertir en cliente»** en cada fila de la lista de pases (Panel Master). Abre un panel debajo de la lista,
+  precargado desde el pase: plan (PLATA por defecto, se puede elegir BRONCE u ORO), **mail del DT obligatorio** (el
+  del alta del pase o el último que dejó al canjear; si no hay, se escribe ahí y el botón queda apagado hasta tenerlo),
+  id del club (`C.idClubSugerido`: el equipo sin sufijo, sin acentos) y su nombre. Si el id ya es un cliente, lo dice:
+  el alta le SUMA la categoría. Tipear no repinta. Confirmar pasa por `SGADD_CONFIRMAR` con el diff.
+- **Acción `convertir`** (`server/rutas/cortesias.js`, solo ADMIN), con el alta de siempre y en este orden:
+  1. catálogo: `mutar.aplicar('alta')` sobre `cargarParaEscribir`, con `libroDe = <torneo>/<zona del pase>` (la
+     categoría lee ese libro y queda enganchada a esa zona), el equipo del pase como propio y el plan. Categoría
+     `<club>-<zona>`. Se rechaza un id que es un torneo o una categoría que ya existe;
+  2. la ficha (contacto, mail, fecha de alta, mensual);
+  3. el acceso con `invitacion.asegurar` (el cupo y un mail por club, como «Quiénes pueden entrar»);
+  4. la bienvenida institucional con el código adentro (`cron.enviarBienvenida`);
+  5. el pase queda `convertido` con `{fecha, club, categoria, plan, email, por, bienvenida}`. Su token deja de abrir la
+     muestra (`CORTESIA_CONVERTIDO` → el cierre dice «Ingresar»).
+  Es la ÚNICA acción de cortesías que escribe `sgadd:catalogo` y `sgadd:clientes`. Si el catálogo falla no se toca
+  nada más; si el mail falla, el alta queda y la pantalla lo dice (con el código de respaldo).
+  **El catálogo se escribe con el kv del módulo**, el mismo con que lo lee `cargarParaEscribir`; `deps.kv` es el de
+  los hashes.
+- **El aviso del día −2** (`avisosCortesia` en `cron-vencimientos.js`, dentro de `ejecutar`, con su propio try: un
+  problema con los pases no frena los recordatorios de los clientes). `C.planificarAvisosD2` (PURO): activo, a 2 días de
+  calendario de Argentina, con mail, y sin `avisoD2` para ESE vencimiento. Dos guardas contra el duplicado: el reclamo
+  atómico en `sgadd:notificaciones` (`cortesia|<id>|d2@<vence>`) y la marca `avisoD2` en el pase, escrita sobre el pase
+  recién leído. Las dos llevan el vencimiento: extender lo rearma. Si el mail falla se libera el reclamo.
+  Plantilla `recordatorioCortesia` (mail-plantillas): no habla de planes ni de renovación; invita a activar la
+  licencia por WhatsApp y dice que la muestra se cierra sola. `marco()` acepta `pie`.
+- Tests: `test-cortesias.js` sección 8 bis y el final de la 10 (182 en total). Verificado en el navegador contra el
+  catálogo real con las escrituras en memoria y el mail sin salir: el pase sin mail pide el mail, avisa el club
+  existente, el modal enumera el alta, y después la fila dice «→ club / categoría» y «bienvenida enviada».
 
 ### Para producción
-1. Deploy del backend (`cd server && npx vercel --prod`): sin él, el link del pase dice «no válido».
-2. Push del front (`?v=385`, `sgadd.css` regenerado, `server/lib/compartido/sgadd-data.js` sincronizado).
-3. La Fase 2 necesita el deploy del backend: sin él no existen `/api/v1/pase/solicitar`, `/api/v1/pase/actividad` ni
-   las acciones `aprobar` / `descartar`.
+1. Deploy del backend (`cd server && npx vercel --prod`): sin él, el link del pase dice «no válido» y no existen
+   `/api/v1/pase/solicitar`, `/api/v1/pase/actividad` ni las acciones `aprobar`, `descartar` y `convertir`.
+2. Push del front (`?v=386`).
+3. El aviso del día −2 corre con el cron de vencimientos (09:00 AR); sin `SMTP_PASS` no sale nada.
 

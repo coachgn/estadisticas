@@ -153,7 +153,7 @@ ${o.cuerpo}
     </td></tr>
     <tr><td style="background:#0B1121;padding:14px 28px;font-size:11px;color:#94a3b8;line-height:1.5;">
       MotorStats<sup>AR</sup> · Panel de scouting y estadísticas de básquet.<br>
-      Recibís este mail porque {{CLUB}} tiene una categoría activa en MotorStats.
+      ${o.pie || 'Recibís este mail porque {{CLUB}} tiene una categoría activa en MotorStats.'}
     </td></tr>
   </table>
 </td></tr></table>
@@ -446,7 +446,62 @@ ${pieTexto()}`, v);
   return { tipo: 'recordatorio_' + dias + 'd', asunto: asunto, html: html, texto: texto };
 }
 
+/* ------------------------------------------------- CORTESÍA · DÍA -2 */
+
+/**
+ * El aviso de la muestra de cortesía, dos días antes de que termine. Es el
+ * único mail que sale para alguien que todavía NO es cliente, así que no
+ * habla de planes ni de renovación: invita a activar la licencia y dice
+ * qué pasa si no lo hace (la muestra se cierra y no queda nada a su nombre).
+ * @param {{nombre, equipo, torneo, vence, url}} d   `vence` AAAA-MM-DD
+ */
+function recordatorioCortesia(d) {
+  const x = d || {};
+  const equipo = x.equipo || 'tu equipo';
+  const torneo = x.torneo || 'tu torneo';
+  const vence = fechaLarga(String(x.vence || '').slice(0, 10)) || 'pasado mañana';
+  const saludo = x.nombre ? 'Hola, ' + String(x.nombre).split(/\s+/)[0] : 'Hola';
+  const asunto = 'Tu muestra de ' + equipo + ' en MotorStats termina en 2 días';
+  const v = {
+    ASUNTO: asunto,
+    PREHEADER: 'La muestra con los datos de ' + equipo + ' queda abierta hasta el ' + vence + '. Activá tu licencia y la seguís sin cortes.',
+    SALUDO: saludo, CLUB: equipo, EQUIPO: equipo, TORNEO: torneo, VENCE: vence,
+    URL_PANEL: x.url || PANEL_URL,
+    URL_WHATSAPP_SOPORTE: urlWhatsApp('Hola MotorStats, estoy probando la muestra de ' + equipo + ' y tengo una consulta.'),
+    URL_WHATSAPP_ACTIVAR: urlWhatsApp('Hola MotorStats, quiero activar la licencia de ' + equipo + ' en ' + torneo + '.'),
+  };
+  const cuerpo = `<p style="margin:0 0 12px;font-size:17px;font-weight:700;">{{SALUDO}}:</p>
+<p style="margin:0 0 12px;">Te escribimos porque la muestra de <strong>{{EQUIPO}}</strong> en <strong>{{TORNEO}}</strong>
+queda abierta <strong>dos días más</strong>: hasta el <strong>{{VENCE}}</strong> a las 23:59 hs.</p>
+<p style="margin:0 0 12px;">Si te sirvió para leer a tu equipo y preparar los partidos, activá tu licencia y seguís con el panel completo,
+actualizado partido a partido, con los accesos para tu cuerpo técnico. Lo dejamos listo en un mensaje.</p>
+{{BOTON}}
+<p style="margin:6px 0 0;font-size:13px;color:#374151;">Si no la activás, la muestra se cierra sola en esa fecha. No hay nada que dar de baja ni cobros pendientes.</p>`;
+  const html = rellenar(marco({ rotulo: 'Tu muestra de cortesía · faltan 2 días', cuerpo: cuerpo,
+    pie: 'Recibís este mail porque te habilitamos una muestra de cortesía de MotorStats.' }), v, {
+    BOTON: boton(v.URL_WHATSAPP_ACTIVAR, 'Activar mi licencia por WhatsApp'),
+  });
+  const texto = rellenarTexto(`{{SALUDO}}:
+
+Te escribimos porque la muestra de {{EQUIPO}} en {{TORNEO}} queda abierta dos días más: hasta el {{VENCE}} a las 23:59 hs.
+
+Si te sirvió para leer a tu equipo y preparar los partidos, activá tu licencia y seguís con el panel completo, actualizado partido a partido, con los accesos para tu cuerpo técnico.
+
+Activar mi licencia por WhatsApp: {{URL_WHATSAPP_ACTIVAR}}
+
+Si no la activás, la muestra se cierra sola en esa fecha. No hay nada que dar de baja ni cobros pendientes.
+
+¿Necesitás ayuda?
+WhatsApp de atención: +54 9 221 614-3994 · {{URL_WHATSAPP_SOPORTE}}
+Consultas: ${REMITENTE} · Instagram @${INSTAGRAM}
+
+MotorStats AR · Panel de scouting y estadísticas de básquet.
+Recibís este mail porque te habilitamos una muestra de cortesía de MotorStats.`, v);
+  return { tipo: 'cortesia_d2', asunto: asunto, html: html, texto: texto };
+}
+
 module.exports = {
+  recordatorioCortesia,
   REMITENTE, NOMBRE_REMITENTE, WHATSAPP, INSTAGRAM, PANEL_URL, PLANES, RENOVACIONES, DIAS_AVISO,
   bienvenida, recordatorio, datosAcceso, urlIngreso, rellenar, rellenarTexto, variables, fechaLarga, esc,
 };

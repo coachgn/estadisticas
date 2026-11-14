@@ -418,7 +418,7 @@ const SGADD_CORTESIA = (function () {
      ===================================================================== */
   const DIAS = [3, 5, 7, 10, 15];
   const AYUDA = 'El pase da el Plan PLATA sobre su equipo: Scouting con rivales de muestra anonimizados.';
-  const adm = { abierto: false, cargado: false, cargando: false, error: '', pases: [], solicitudes: [], envio: null, yendo: false, aviso: '',
+  const adm = { abierto: false, cargado: false, cargando: false, error: '', pases: [], solicitudes: [], envio: null, yendo: false, aviso: '', conv: null, convResultado: null,
     f: { torneo: '', zona: '', equipo: '', dias: 7, diasLibre: '', nombre: '', whatsapp: '', email: '', nota: '', pbp: true, solicitudId: '' } };
   let clubesAdmin = [];
 
@@ -522,6 +522,7 @@ const SGADD_CORTESIA = (function () {
       <tbody>${adm.pases.map(p => {
         const c = p.contactos || [];
         const inv = p.invitado || {};
+        if (p.estado === 'convertido') return filaConvertida(p, inv);
         return `<tr>
           <td>${esc(legible(p.equipo))}</td>
           <td>${esc(p.torneoNombre)} · ${esc(p.zonaLabel)}</td>
@@ -533,8 +534,159 @@ const SGADD_CORTESIA = (function () {
             <button type="button" onclick="SGADD_CORTESIA.adminAccion('regenerar','${esc(p.id)}')" class="border border-hairline rounded px-2 py-1 hover:bg-surface2">Reenviar</button>
             <button type="button" onclick="SGADD_CORTESIA.adminAccion('extender','${esc(p.id)}')" class="border border-hairline rounded px-2 py-1 hover:bg-surface2">+${diasElegidos() || 7} d</button>
             ${p.estado === 'activo' ? `<button type="button" onclick="SGADD_CORTESIA.adminAccion('revocar','${esc(p.id)}')" class="border border-hairline rounded px-2 py-1 hover:bg-surface2" style="color:#f87171">Revocar</button>` : ''}
+            <button type="button" onclick="SGADD_CORTESIA.adminConvertir('${esc(p.id)}')" class="bg-accent text-base font-semibold rounded px-2 py-1">Convertir en cliente</button>
           </td></tr>`;
       }).join('')}</tbody></table></div>`;
+  }
+
+  /* Un pase convertido ya no tiene acciones de pase: dice en qué cliente
+     terminó, con qué plan y si la bienvenida salió. */
+  function filaConvertida(p, inv) {
+    const cv = p.convertido || {};
+    const mail = cv.bienvenida === 'enviado' ? 'bienvenida enviada' : (cv.bienvenida ? 'bienvenida: ' + cv.bienvenida : '');
+    return `<tr>
+      <td>${esc(legible(p.equipo))}</td>
+      <td>${esc(p.torneoNombre)} · ${esc(p.zonaLabel)}</td>
+      <td>${esc(inv.nombre || '')}<br><span class="text-muted">${esc(cv.email || '')}</span></td>
+      <td>${chipEstado(p)}<br><span class="text-muted">${esc(fechaCorta(cv.fecha))}</span></td>
+      <td>${p.usos || 0}</td>
+      <td>${actividadHtml(p.actividad)}</td>
+      <td class="text-muted">→ ${esc((cv.club || '') + ' / ' + (cv.categoria || ''))}<br>${esc((cv.plan || '') + (mail ? ' · ' + mail : ''))}</td></tr>`;
+  }
+
+  /* =====================================================================
+     FASE 3 · CONVERTIR EN CLIENTE
+
+     Un panel debajo de la lista con lo que se va a dar de alta, todo
+     precargado desde el pase: plan (PLATA por defecto), el mail del DT
+     (OBLIGATORIO: es a donde va la bienvenida con sus credenciales; si el
+     pase no lo tenía, se escribe acá), el id del club y su nombre. Tipear
+     no repinta (punto 13): solo habilita el botón. El alta en sí pasa por
+     el modal de confirmación, que enumera lo que se crea.
+     ===================================================================== */
+  const PLANES_CONV = ['BRONCE', 'PLATA', 'ORO'];
+  const MAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function emailDe(p) {
+    const inv = String(((p && p.invitado) || {}).email || '').trim().toLowerCase();
+    if (inv) return inv;
+    const c = ((p && p.contactos) || []).slice()
+      .sort((a, b) => String((b && b.ultimoIngreso) || '').localeCompare(String((a && a.ultimoIngreso) || '')))
+      .find(x => x && x.email);
+    return c ? String(c.email).trim().toLowerCase() : '';
+  }
+  function idClub(equipo) {
+    return legible(equipo).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  }
+  function faltanConversion(cv) {
+    const out = [];
+    if (!cv) return ['el pase'];
+    if (!MAIL.test(String(cv.email || '').trim())) out.push('el mail del entrenador');
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(String(cv.club || ''))) out.push('el id del club (minúsculas y guiones)');
+    if (!String(cv.nombreClub || '').trim()) out.push('el nombre del club');
+    if (PLANES_CONV.indexOf(cv.plan) === -1) out.push('el plan');
+    return out;
+  }
+  /* Un id que ya es un cliente no se pisa: el alta le SUMA la categoría.
+     Se dice antes de confirmar, para que no sea una sorpresa. */
+  function textoConv(cv) {
+    const falta = faltanConversion(cv);
+    if (falta.length) return 'Falta ' + falta.join(', ') + '.';
+    const ya = (clubesAdmin || []).find(c => c && c.id === cv.club);
+    if (ya && ya.tipo === 'torneo') return 'Ese id es de un torneo: elegí otro.';
+    if (ya) return 'Ese club ya existe (' + (ya.nombre || ya.id) + '): se le suma esta categoría.';
+    return 'Listo para dar de alta.';
+  }
+  function adminConvertir(id) {
+    const p = adm.pases.find(x => x.id === id);
+    if (!p || p.estado === 'convertido') return null;
+    const club = idClub(p.equipo);
+    adm.conv = { id: id, plan: 'PLATA', email: emailDe(p), mailDelPase: !!emailDe(p),
+      club: club, nombreClub: legible(p.equipo), categoria: club + '-' + p.zona };
+    adm.convResultado = null;
+    repintarAdmin();
+    const n = typeof document !== 'undefined' && document.getElementById('cortesiaConv');
+    if (n && n.scrollIntoView) n.scrollIntoView({ block: 'center' });
+    return adm.conv;
+  }
+  function adminConvCampo(campo, v) {
+    if (!adm.conv || ['plan', 'email', 'club', 'nombreClub'].indexOf(campo) === -1) return;
+    adm.conv[campo] = campo === 'club' ? String(v || '').trim().toLowerCase() : String(v == null ? '' : v);
+    if (campo === 'club') adm.conv.categoria = adm.conv.club + '-' + ((adm.pases.find(x => x.id === adm.conv.id) || {}).zona || '');
+    const falta = faltanConversion(adm.conv);
+    const b = typeof document !== 'undefined' && document.getElementById('cortesiaConvOk');
+    if (b) b.disabled = !!falta.length || adm.yendo;
+    const t = typeof document !== 'undefined' && document.getElementById('cortesiaConvFalta');
+    if (t) t.textContent = textoConv(adm.conv);
+  }
+  function adminConvCancelar() { adm.conv = null; adm.convResultado = null; repintarAdmin(); }
+
+  function adminConvHtml() {
+    const cv = adm.conv;
+    if (adm.convResultado) {
+      const r = adm.convResultado;
+      const ok = r.bienvenida && r.bienvenida.resultado === 'enviado';
+      return `<div class="mt-4 rounded-lg border p-3 text-xs" role="status" data-cortesia-conv-ok="1" style="border-color:${ok ? '#1f5c43' : '#8a5206'}">
+        <p class="text-ink font-semibold">✓ Cliente dado de alta: ${esc(r.club)} / ${esc(r.categoria)} · Plan ${esc(r.plan)}</p>
+        <p class="mt-1 ${ok ? 'text-muted' : ''}" style="${ok ? '' : 'color:#fbbf24'}">${ok ? 'Bienvenida con sus credenciales enviada a ' + esc(r.email) + '.'
+          : 'La bienvenida no salió (' + esc((r.bienvenida && (r.bienvenida.mensaje || r.bienvenida.resultado)) || 'sin detalle') + '). El alta quedó hecha: reenviala desde la ficha del cliente.'}</p>
+        ${r.acceso && r.acceso.codigo && !ok ? `<p class="mt-1">Código de invitación de respaldo: <code>${esc(r.acceso.codigo)}</code></p>` : ''}
+        <button type="button" onclick="SGADD_CORTESIA.adminConvCancelar()" class="mt-2 border border-hairline rounded px-2 py-1 hover:bg-surface2">Cerrar</button></div>`;
+    }
+    if (!cv) return '';
+    const p = adm.pases.find(x => x.id === cv.id) || {};
+    const falta = faltanConversion(cv);
+    const inp = 'bg-base border border-hairline rounded px-2 py-2 text-xs text-ink w-full';
+    return `<div id="cortesiaConv" class="mt-4 rounded-lg border border-hairline p-3" data-cortesia-conv="1">
+      <p class="text-sm text-ink font-semibold">Convertir en cliente · ${esc(legible(p.equipo))}</p>
+      <p class="text-[11px] text-muted mt-1">Se da de alta en ${esc(p.torneoNombre || '')} · ${esc(p.zonaLabel || '')}, leyendo el libro de esa zona, con ${esc(legible(p.equipo))} como equipo propio. Sale la bienvenida institucional con su código para elegir la clave.</p>
+      <div class="grid sm:grid-cols-2 gap-3 mt-3">
+        <label class="text-[11px] text-muted">Plan contratado
+          <select class="${inp}" onchange="SGADD_CORTESIA.adminConvCampo('plan', this.value)">${PLANES_CONV.map(x => `<option value="${x}" ${x === cv.plan ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+        <label class="text-[11px] text-muted">Mail del entrenador (obligatorio)${cv.mailDelPase ? '' : ' · el pase no lo tenía'}
+          <input id="cortesiaConvEmail" type="email" class="${inp}" value="${esc(cv.email)}" placeholder="dt@club.com" autocomplete="off"
+            oninput="SGADD_CORTESIA.adminConvCampo('email', this.value)" aria-required="true"></label>
+        <label class="text-[11px] text-muted">Id del club
+          <input class="${inp}" value="${esc(cv.club)}" autocomplete="off" oninput="SGADD_CORTESIA.adminConvCampo('club', this.value)"></label>
+        <label class="text-[11px] text-muted">Nombre del club
+          <input class="${inp}" value="${esc(cv.nombreClub)}" autocomplete="off" oninput="SGADD_CORTESIA.adminConvCampo('nombreClub', this.value)"></label>
+      </div>
+      <p id="cortesiaConvFalta" class="text-[11px] text-muted mt-2">${esc(textoConv(cv))}</p>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <button id="cortesiaConvOk" type="button" onclick="SGADD_CORTESIA.adminConvConfirmar()" ${falta.length || adm.yendo ? 'disabled' : ''}
+          class="bg-accent text-base font-semibold rounded px-3 py-2 text-xs">Dar de alta y mandar la bienvenida</button>
+        <button type="button" onclick="SGADD_CORTESIA.adminConvCancelar()" class="text-xs text-muted hover:text-ink">Cancelar</button>
+      </div></div>`;
+  }
+
+  function adminConvConfirmar() {
+    const cv = adm.conv;
+    if (!cv || faltanConversion(cv).length) return null;
+    const p = adm.pases.find(x => x.id === cv.id) || {};
+    const pedido = { accion: 'convertir', id: cv.id, plan: cv.plan, email: cv.email.trim().toLowerCase(),
+      club: cv.club, categoria: cv.categoria, nombreClub: cv.nombreClub.trim() };
+    const correr = () => {
+      adm.yendo = true; adm.error = ''; repintarAdmin();
+      return SGADD_DATA.guardarCortesia(pedido).then((r) => {
+        adm.yendo = false; adm.conv = null;
+        adm.convResultado = { club: r.club, categoria: r.categoria, plan: r.plan, email: r.email, bienvenida: r.bienvenida, acceso: r.acceso };
+        return cargarPases();
+      }).catch((e) => { adm.yendo = false; adm.error = (e && e.message) || 'No se pudo convertir.'; repintarAdmin(); });
+    };
+    const cambios = [
+      { label: 'Cliente', antes: '—', despues: cv.nombreClub + ' (' + cv.club + ')' },
+      { label: 'Categoría', antes: '—', despues: cv.categoria + ' · ' + (p.torneoNombre || '') + ' · ' + (p.zonaLabel || '') },
+      { label: 'Equipo propio', antes: '—', despues: legible(p.equipo) },
+      { label: 'Plan', antes: 'cortesía PLATA', despues: cv.plan },
+      { label: 'Acceso', antes: '—', despues: cv.email + ' (bienvenida con código)' },
+      { label: 'Pase', antes: p.estadoEfectivo || 'activo', despues: 'convertido' },
+    ];
+    if (typeof SGADD_CONFIRMAR !== 'undefined') {
+      SGADD_CONFIRMAR.abrir({ titulo: 'Convertir el pase en cliente', confirmar: 'Dar de alta', cambios: cambios, alConfirmar: correr });
+      return null;
+    }
+    return correr();
   }
 
   /* La actividad de un pase en una celda: ingresos, secciones y PDF. Las
@@ -614,7 +766,7 @@ const SGADD_CORTESIA = (function () {
       ontoggle="SGADD_CORTESIA.adminToggle(this.open)">
       <summary class="cursor-pointer p-4 sm:p-5"><span class="font-display uppercase tracking-wide text-sm text-ink">🎟 Pases de cortesía</span>
         <span class="text-[11px] text-muted ml-2">una muestra con datos reales, sin dar de alta un cliente</span></summary>
-      <div class="px-4 sm:px-5 pb-4 sm:pb-5">${adm.abierto ? adminSolicitudesHtml() + '<div id="cortesiaAdmForm" class="mt-5">' + adminFormHtml(clubesAdmin) + '</div>' + adminEnvioHtml() + adminListaHtml() : ''}</div>
+      <div class="px-4 sm:px-5 pb-4 sm:pb-5">${adm.abierto ? adminSolicitudesHtml() + '<div id="cortesiaAdmForm" class="mt-5">' + adminFormHtml(clubesAdmin) + '</div>' + adminEnvioHtml() + adminListaHtml() + adminConvHtml() : ''}</div>
     </details>`;
   }
   function repintarAdmin() {
@@ -726,6 +878,7 @@ const SGADD_CORTESIA = (function () {
     barra, montarBarra, urlReserva, cargarRivales, rivales, esRivalDeMuestra, serial, diasRestantes, ROLES,
     adminHtml, adminToggle, adminCampo, adminElegir, adminDias, adminCrear, adminAccion, adminCopiar, faltanAdmin,
     adminAprobar, adminDescartar, adminSoltarSolicitud, sugerirEquipo, actividadHtml,
+    adminConvertir, adminConvCampo, adminConvCancelar, adminConvConfirmar, adminConvHtml, faltanConversion, textoConv, emailDe, idClub,
     _adm: adm };
 })();
 

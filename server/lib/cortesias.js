@@ -539,7 +539,103 @@ async function guardarActividad(id, a, deps) {
   return a;
 }
 
+/* --------------------------------------------------------------------
+   FASE 3 · EL CIERRE: convertir el pase en cliente y el aviso del día -2
+
+   Convertir NO vive acá: es el alta de siempre (catálogo + accesos +
+   bienvenida), que la hace la ruta con los mismos módulos que el Panel
+   Master. Acá están las piezas PURAS: de dónde sale el mail, qué id de
+   club se propone y a qué pases les toca el aviso de hoy.
+   -------------------------------------------------------------------- */
+
+const PLANES_CONVERSION = ['BRONCE', 'PLATA', 'ORO'];
+const DIAS_AVISO_CORTESIA = 2;
+
+/** El mail del DT: el del alta del pase y, si no, el último que dejó al
+    canjear. Sin mail no hay bienvenida ni aviso: el modal lo pide. */
+function emailDelPase(pase) {
+  const p = pase || {};
+  const inv = normalizarEmail((p.invitado || {}).email);
+  if (inv) return inv;
+  const lista = (Array.isArray(p.contactos) ? p.contactos : []).slice()
+    .sort((a, b) => String((b && b.ultimoIngreso) || '').localeCompare(String((a && a.ultimoIngreso) || '')));
+  const c = lista.find(x => x && normalizarEmail(x.email));
+  return c ? normalizarEmail(c.email) : '';
+}
+
+/** El nombre de quien se saluda: el invitado del pase, o el que canjeó. */
+function nombreDelPase(pase) {
+  const p = pase || {};
+  return textoCorto((p.invitado || {}).nombre, 80)
+    || textoCorto(((Array.isArray(p.contactos) ? p.contactos : [])[0] || {}).nombre, 80) || '';
+}
+
+/** El id de club que se propone: el equipo sin sufijo, en minúsculas y sin
+    acentos. El admin lo puede cambiar; el servidor lo valida igual. */
+function idClubSugerido(equipo) {
+  return equipoLegible(equipo).normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+}
+
+/** Lo que el alta del catálogo necesita, armado desde el pase. PURO. */
+function datosDeConversion(pase, pedido) {
+  const p = pase || {};
+  const b = pedido || {};
+  const plan = String(b.plan || PLAN).trim().toUpperCase();
+  if (PLANES_CONVERSION.indexOf(plan) === -1) return { ok: false, codigo: 'PLAN', mensaje: 'El plan va ' + PLANES_CONVERSION.join(', ') + '.' };
+  const email = normalizarEmail(b.email) || emailDelPase(p);
+  if (!email) return { ok: false, codigo: 'EMAIL', mensaje: 'Falta el mail del entrenador: la bienvenida con sus credenciales sale a ese mail.' };
+  const club = String(b.club || idClubSugerido(p.equipo)).trim().toLowerCase();
+  if (!SLUG.test(club)) return { ok: false, codigo: 'CLUB', mensaje: 'El id del club va en minúsculas, sin espacios ni acentos.' };
+  const categoria = String(b.categoria || (club + '-' + p.zona)).trim().toLowerCase();
+  if (!SLUG.test(categoria)) return { ok: false, codigo: 'CATEGORIA', mensaje: 'El id de la categoría va en minúsculas, sin espacios ni acentos.' };
+  const zl = p.zonaLabel && p.zonaLabel !== p.torneoNombre ? ' · ' + p.zonaLabel : '';
+  return { ok: true, datos: {
+    club: club,
+    categoria: categoria,
+    nombre: textoCorto(b.nombreClub, 80) || equipoLegible(p.equipo),
+    label: textoCorto(b.label, 80) || ((p.torneoNombre || p.torneo) + zl),
+    libroDe: p.torneo + '/' + p.zona,
+    equipoPropio: p.equipo,
+    plan: plan,
+    vence: b.vence ? String(b.vence).slice(0, 10) : undefined,
+  }, email: email, contacto: nombreDelPase(p), whatsapp: (p.invitado || {}).whatsapp || '' };
+}
+
+/** El pase después de convertir. Queda el registro: es la historia del lead. */
+function marcarConvertido(pase, conv, opciones) {
+  return Object.assign({}, pase, { estado: 'convertido', convertido: Object.assign({
+    fecha: ahoraDe(opciones).toISOString() }, conv || {}) });
+}
+
+/** El id del reclamo del aviso: lleva el vencimiento, así extender lo rearma. */
+function idAvisoD2(pase) {
+  return 'cortesia|' + pase.id + '|d2@' + String(pase.vence || '').slice(0, 10);
+}
+
+/**
+ * A QUÉ PASES LES TOCA HOY EL AVISO DEL DÍA -2. PURO.
+ * Solo los activos con dos días por delante, con mail y sin el aviso ya
+ * mandado para ESE vencimiento (extender el pase mueve la fecha y lo rearma).
+ */
+function planificarAvisosD2(pases, opciones) {
+  const avisos = [], omitidos = [];
+  Object.keys(pases || {}).forEach(k => {
+    const p = pases[k];
+    if (!p || !ID.test(String(p.id || ''))) return;
+    if (estadoEfectivo(p, opciones) !== 'activo') return;
+    if (diasEntre(ahoraDe(opciones), p.vence) !== DIAS_AVISO_CORTESIA) return;
+    const para = emailDelPase(p);
+    if (!para) return omitidos.push({ id: p.id, motivo: 'el pase no tiene mail' });
+    if (p.avisoD2 && p.avisoD2.vence === p.vence) return omitidos.push({ id: p.id, motivo: 'ya enviado' });
+    avisos.push({ id: p.id, para: para, vence: p.vence, idHito: idAvisoD2(p) });
+  });
+  return { avisos: avisos, omitidos: omitidos };
+}
+
 module.exports = {
+  PLANES_CONVERSION, DIAS_AVISO_CORTESIA, emailDelPase, nombreDelPase, idClubSugerido, datosDeConversion,
+  marcarConvertido, idAvisoD2, planificarAvisosD2,
   CLAVE, PLAN, DOMINIO, DIAS_RAPIDOS, DIAS_MIN, DIAS_MAX, TOKEN_MAX_SEG, MAX_CONTACTOS, ESTADOS, PANEL_URL,
   huella, nuevoCodigo, emailDelToken, normalizarWhatsapp, normalizarContacto, normalizarDias, venceDe,
   armar, estadoEfectivo, vigente, diasRestantes, segundosDeToken, registrarCanje, paraAdmin, paraPuerta,

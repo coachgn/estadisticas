@@ -324,6 +324,82 @@ const pedido = (tok, params, query, body) => ({ headers: tok ? { authorization: 
   check('el padrón de clientes no se tocó', escrituras.every(k => !/clientes/.test(k)) && !store['sgadd:clientes']);
   check('los pases, sus solicitudes y su actividad viven solo en sgadd:cortesias*', Object.keys(MEM.hashes).filter(k => Object.keys(MEM.hashes[k]).length).every(k => k === C.CLAVE || k.indexOf(C.CLAVE + ':') === 0));
 
+  seccion('8 bis · Fase 3: convertir en cliente y el aviso del día -2');
+  const CRON = require('./server/lib/cron-vencimientos.js');
+  const mails = [];
+  const transporte = { enviar: async (m) => { mails.push(m); return { ok: true }; } };
+  const deps3 = { kv: MEM, transporte: transporte };
+  const pv = await R.manejarCortesiasEscribir(pedido(tokAdmin, {}, {}, { accion: 'crear', torneo: 'lnb', zona: 'lnb-unica', equipo: QU, dias: 7,
+    invitado: { nombre: 'Rubén Magnano', whatsapp: '221 555 0003' } }), deps3);
+  const pvId = pv.body.pase.id;
+  check('el pase sin mail no tiene de dónde mandar la bienvenida', C.emailDelPase(pv.body.pase) === '');
+  const escAntes = escrituras.length;
+  const sinMail = await R.manejarCortesiasEscribir(pedido(tokAdmin, {}, {}, { accion: 'convertir', id: pvId }), deps3);
+  check('convertir sin mail se rechaza y pide el mail', sinMail.status === 400 && sinMail.body.codigo === 'EMAIL', sinMail.body);
+  check('y sin el mail no se escribió nada fuera de los pases', escrituras.length === escAntes && mails.length === 0);
+  check('un cliente no convierte pases', (await R.manejarCortesiasEscribir(pedido(tokBoca, {}, {}, { accion: 'convertir', id: pvId, email: 'dt@quimsa.com' }), deps3)).status === 403);
+  check('un plan que no existe se rechaza', (await R.manejarCortesiasEscribir(pedido(tokAdmin, {}, {}, { accion: 'convertir', id: pvId, email: 'dt@quimsa.com', plan: 'DIAMANTE' }), deps3)).body.codigo === 'PLAN');
+  check('un id de club que es un torneo se rechaza', (await R.manejarCortesiasEscribir(pedido(tokAdmin, {}, {}, { accion: 'convertir', id: pvId, email: 'dt@quimsa.com', club: 'lnb' }), deps3)).body.codigo === 'CLUB');
+  check('y nada de eso escribió el catálogo ni el padrón', escrituras.length === escAntes);
+
+  const conv = await R.manejarCortesiasEscribir(pedido(tokAdmin, {}, {}, { accion: 'convertir', id: pvId, email: 'DT@Quimsa.com', plan: 'ORO' }), deps3);
+  check('convertir da de alta al cliente', conv.status === 200 && conv.body.club === 'quimsa' && conv.body.plan === 'ORO', conv.body);
+  const catNuevo = JSON.parse(store[catalogo.CLAVE_KV]);
+  const kq = ((catNuevo.quimsa || {}).categorias || {})[conv.body.categoria] || {};
+  check('el club nuevo queda con el equipo del pase como propio', catNuevo.quimsa && catNuevo.quimsa.equipoPropio === QU && catNuevo.quimsa.liga === 'liga-nacional');
+  check('la categoría lee el libro de la zona y queda enganchada', kq.sheetId === ID_LNB && kq.torneo === 'lnb' && kq.zona === 'unica' && kq.plan === 'ORO', kq);
+  check('el resto del catálogo sigue igual', JSON.stringify(catNuevo.boca) === JSON.stringify(CAT.boca) && JSON.stringify(catNuevo.lnb) === JSON.stringify(CAT.lnb));
+  check('solo al convertir se escribe el catálogo y el padrón', escrituras.slice(escAntes).indexOf(catalogo.CLAVE_KV) !== -1 && escrituras.slice(escAntes).some(k => /clientes/.test(k)));
+  const padron = JSON.parse(store['sgadd:clientes'] || '{}');
+  check('el mail del DT queda en el padrón, del club nuevo', padron['dt@quimsa.com'] && padron['dt@quimsa.com'].club === 'quimsa', padron);
+  const bien = mails.find(m => m.para === 'dt@quimsa.com');
+  check('sale la bienvenida institucional a ese mail', conv.body.bienvenida && conv.body.bienvenida.resultado === 'enviado' && bien && /Bienvenidos a MotorStats/.test(bien.asunto), conv.body.bienvenida);
+  check('con el código para elegir la clave adentro', bien && conv.body.acceso && conv.body.acceso.codigo && bien.texto.indexOf(conv.body.acceso.codigo) !== -1);
+  check('la ficha del cliente queda con el contacto y el mail', (await require('./server/lib/fichas.js').leer('quimsa', conv.body.categoria, deps3) || {}).email === 'dt@quimsa.com');
+  const pConv = await C.leer(pvId, deps3);
+  check('el pase queda convertido, con a dónde fue', pConv.estado === 'convertido' && pConv.convertido.club === 'quimsa' && pConv.convertido.bienvenida === 'enviado');
+  check('un pase convertido no se convierte dos veces', (await R.manejarCortesiasEscribir(pedido(tokAdmin, {}, {}, { accion: 'convertir', id: pvId, email: 'dt@quimsa.com' }), deps3)).body.codigo === 'CONVERTIDO');
+  check('ni se extiende', (await R.manejarCortesiasEscribir(pedido(tokAdmin, {}, {}, { accion: 'extender', id: pvId, dias: 5 }), deps3)).body.codigo === 'CONVERTIDO');
+  const tokPv = auth.firmarToken({ email: C.emailDelToken(pvId), club: 'lnb', categoria: 'lnb-unica', equipoAsignado: QU, plan: 'PLATA', cortesia: pvId }, { expiraEn: '1h' });
+  const vConv = await R.validarPedido({ method: 'GET', path: '/api/v1/catalogo', query: {} }, auth.verificarToken(tokPv), deps3);
+  check('el token del pase convertido deja de abrir la muestra', vConv.error && vConv.error.body.codigo === 'CORTESIA_CONVERTIDO');
+
+  /* el aviso del día -2 */
+  const ahora = new Date('2026-11-14T15:00:00Z');
+  const baseD2 = { torneo: 'lnb', zona: 'lnb-unica', equipo: OB, invitado: { nombre: 'Sergio Hernández', whatsapp: '2215550004', email: 'sh@obras.com' } };
+  const a2 = C.armar(Object.assign({ dias: 2 }, baseD2), CAT, { ahora: ahora }).pase;
+  const a3 = C.armar(Object.assign({ dias: 3 }, baseD2), CAT, { ahora: ahora }).pase;
+  const aSin = C.armar(Object.assign({ dias: 2 }, baseD2, { invitado: { nombre: 'Sin Mail', whatsapp: '2215550005' } }), CAT, { ahora: ahora }).pase;
+  const aRev = Object.assign(C.armar(Object.assign({ dias: 2 }, baseD2), CAT, { ahora: ahora }).pase, { estado: 'revocado' });
+  const aCon = Object.assign(C.armar(Object.assign({ dias: 2 }, baseD2), CAT, { ahora: ahora }).pase, { estado: 'convertido' });
+  const plD2 = C.planificarAvisosD2({ [a2.id]: a2, [a3.id]: a3, [aSin.id]: aSin, [aRev.id]: aRev, [aCon.id]: aCon }, { ahora: ahora });
+  check('el día -2 le toca solo al pase activo, con mail y a 2 días', plD2.avisos.length === 1 && plD2.avisos[0].id === a2.id, plD2);
+  check('el que no tiene mail queda omitido con el motivo', plD2.omitidos.some(o => o.id === aSin.id && /mail/.test(o.motivo)));
+
+  const MEM2 = kvMemoria();
+  const deps4 = { kv: MEM2, transporte: transporte, ahora: ahora.getTime() };
+  [a2, a3, aSin, aRev, aCon].forEach(p => { MEM2.hashes[C.CLAVE] = MEM2.hashes[C.CLAVE] || {}; MEM2.hashes[C.CLAVE][p.id] = JSON.stringify(p); });
+  const nMails = mails.length;
+  const c1d2 = await CRON.avisosCortesia(deps4);
+  check('la corrida manda el aviso una vez', c1d2.enviados === 1 && mails.length === nMails + 1 && mails[mails.length - 1].para === 'sh@obras.com', c1d2);
+  check('con el tono de la muestra, no de una renovación', /termina en 2 días/.test(mails[mails.length - 1].asunto) && /Activar mi licencia/.test(mails[mails.length - 1].texto) && !/renovación/i.test(mails[mails.length - 1].texto));
+  check('y deja la marca en el pase', (await C.leer(a2.id, deps4)).avisoD2.vence === a2.vence);
+  const c2d2 = await CRON.avisosCortesia(deps4);
+  check('una segunda corrida no lo duplica', c2d2.enviados === 0 && mails.length === nMails + 1 && c2d2.omitidos.some(o => o.id === a2.id && o.motivo === 'ya enviado'), c2d2);
+  const sinMarca = Object.assign({}, await C.leer(a2.id, deps4)); delete sinMarca.avisoD2;
+  await C.guardar(sinMarca, deps4);
+  const c3d2 = await CRON.avisosCortesia(deps4);
+  check('sin la marca, el reclamo atómico igual lo frena', c3d2.enviados === 0 && mails.length === nMails + 1 && c3d2.resultados.some(r => /ya reclamado/.test(r.resultado)), c3d2);
+  const falla = { enviar: async () => { throw Object.assign(new Error('Gmail caído'), { codigo: 'SMTP' }); } };
+  const MEM3 = kvMemoria();
+  MEM3.hashes[C.CLAVE] = { [a2.id]: JSON.stringify(a2) };
+  const cFalla = await CRON.avisosCortesia({ kv: MEM3, transporte: falla, ahora: ahora.getTime() });
+  check('si el mail falla, se libera el reclamo y el pase queda sin marca', cFalla.errores === 1 && !(await C.leer(a2.id, { kv: MEM3 })).avisoD2
+    && !Object.keys(MEM3.hashes['sgadd:notificaciones'] || {}).length, cFalla);
+  const ej = await CRON.ejecutar({ kv: MEM2, transporte: transporte, ahora: ahora.getTime() });
+  check('el cron de vencimientos corre el aviso de cortesías en la misma vuelta', ej.cortesias && ej.cortesias.enviados === 0 && Array.isArray(ej.cortesias.omitidos), ej.cortesias);
+  check('la plantilla del aviso no deja huecos', !/\{\{/.test(require('./server/lib/mail-plantillas.js').recordatorioCortesia({ equipo: 'Obras', torneo: 'LNB', vence: '2026-11-16' }).html));
+
   seccion('9 · El panel: la barra, el Panel Master y los rivales de muestra');
   const vm = require('vm');
   const fs = require('fs');
@@ -432,6 +508,22 @@ const pedido = (tok, params, query, body) => ({ headers: tok ? { authorization: 
   check('propone el equipo del catálogo por el club y la liga', sug && sug.equipo === 'BOCA JUNIORS' && sug.zona === 'lnb-unica', sug);
   check('sin la liga y con dos «Boca», no propone a ciegas', C2.sugerirEquipo({ datos: { club: 'Boca' } }, csSug) === null);
   check('«Club Atlético» no alcanza para proponer', C2.sugerirEquipo({ datos: { club: 'Club Atlético' } }, csSug) === null);
+
+  /* Fase 3 en el Panel Master */
+  const admP = C2._adm;
+  admP.abierto = true; admP.cargado = true; admP.cargando = false; admP.error = '';
+  admP.pases = [Object.assign({}, pv.body.pase, { estado: 'activo', estadoEfectivo: 'activo', diasRestantes: 7 }), C.paraAdmin(pConv)];
+  const htmlConv = C2.adminHtml([]);
+  check('cada pase activo tiene «Convertir en cliente»', (htmlConv.match(/Convertir en cliente/g) || []).length === 1);
+  check('el convertido dice a qué cliente fue, sin acciones de pase', /→ quimsa \//.test(htmlConv));
+  const cv0 = C2.adminConvertir(pv.body.pase.id);
+  check('el panel precarga PLATA, el club y el nombre desde el pase', cv0.plan === 'PLATA' && cv0.club === 'quimsa' && cv0.nombreClub === 'Quimsa' && cv0.categoria === 'quimsa-lnb-unica', cv0);
+  check('sin mail en el pase, lo pide antes de confirmar', cv0.email === '' && C2.faltanConversion(cv0).indexOf('el mail del entrenador') !== -1
+    && /Mail del entrenador \(obligatorio\) · el pase no lo tenía/.test(C2.adminConvHtml()) && /id="cortesiaConvOk"[^>]*disabled/.test(C2.adminConvHtml()));
+  C2.adminConvCampo('email', 'dt@quimsa.com');
+  check('con el mail queda listo para el alta', !C2.faltanConversion(admP.conv).length);
+  C2.adminConvCancelar();
+  check('cancelar cierra el panel', C2.adminConvHtml() === '');
 
   console.log('\n' + (mal ? '✗ ' + mal + ' FALLARON' : '✓ todos') + ' · ' + ok + ' ok');
   process.exit(mal ? 1 : 0);
