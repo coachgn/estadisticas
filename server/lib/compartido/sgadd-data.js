@@ -461,19 +461,8 @@ const SGADD_DATA = (function () {
      para que la persona sepa qué corregir —"demasiados intentos, probá
      en 15 minutos"— y traducirlos acá los degradaría a un "no se pudo".
      -------------------------------------------------------------------- */
-    async function postSinToken(ruta, cuerpo, opciones) {
+  async function postSinToken(ruta, cuerpo, opciones) {
     const o = opciones || {};
-    
-    // --- INTERCEPTOR LOCAL PARA EVITAR CORS Y ENTRAR COMO ADMIN ---
-    if (ruta === '/api/v1/login' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-      return {
-        ok: true,
-        token: "token_admin_bypass_local",
-        user: { email: "freytesgn@gmail.com", rol: "admin", plan: "oro", club: "jujuy" }
-      };
-    }
-    // -------------------------------------------------------------
-
     if (!baseApi) {
       throw Object.assign(new Error('No hay backend configurado, así que no hay dónde ingresar.'),
         { codigo: 'SIN_API' });
@@ -574,7 +563,13 @@ const SGADD_DATA = (function () {
      ===================================================================== */
 
   /** ¿Hay dónde compartirlos? Backend configurado y sesión con token. */
-  function estadosCompartibles() { return !!(baseApi && auth && auth.token()); }
+  /* Un pase de cortesía no comparte estados (el servidor no le abre la
+     ruta): los que marque quedan en su navegador. */
+  function estadosCompartibles() {
+    if (!(baseApi && auth && auth.token())) return false;
+    try { const p = auth.leerPayload(auth.token()); if (p && p.cortesia) return false; } catch (e) {}
+    return true;
+  }
 
   function rutaEstados(club, slug) {
     return '/api/v1/estados/' + encodeURIComponent(club) + '/' + encodeURIComponent(slug);
@@ -760,6 +755,27 @@ const SGADD_DATA = (function () {
   function fichajesGuardarPadron(datos, opciones) { return postConToken('/api/v1/fichajes/padron', datos || {}, opciones); }
 
   function login(datos, opciones) { return postSinToken('/api/v1/login', datos, opciones); }
+
+  /* LOS PASES DE CORTESÍA (punto 179). La puerta consulta y canjea SIN
+     token —el link trae el código—; el admin los lista y los crea con el suyo. */
+  function paseConsultar(codigo, opciones) { return postSinToken('/api/v1/pase/consultar', { codigo: codigo }, opciones); }
+  function paseCanjear(codigo, contacto, opciones) {
+    return postSinToken('/api/v1/pase/canjear', { codigo: codigo, contacto: contacto }, opciones);
+  }
+  async function cortesias(opciones) {
+    const o = opciones || {};
+    if (!baseApi) throw Object.assign(new Error('No hay backend configurado.'), { codigo: 'SIN_API' });
+    if (!(auth && auth.token())) throw Object.assign(new Error('Falta el token.'), { codigo: 'SIN_TOKEN' });
+    const r = await (o.fetch || fetch)(baseApi + '/api/v1/cortesias', { headers: { Authorization: 'Bearer ' + auth.token() } });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok || !cuerpo || !cuerpo.ok) {
+      const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondió ' + r.status));
+      e.codigo = (cuerpo && cuerpo.codigo) || 'HTTP_' + r.status;
+      throw e;
+    }
+    return cuerpo;
+  }
+  function guardarCortesia(intencion, opciones) { return postConToken('/api/v1/cortesias', intencion, opciones); }
   function fijarClave(datos, opciones) { return postSinToken('/api/v1/clave', datos, opciones); }
 
   return {
@@ -767,7 +783,7 @@ const SGADD_DATA = (function () {
     matrizAFilas, matrizALegacy, tipoDeColumna,
     cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo, equiposDelLibro,
     fixtureDeTorneo, llaveDeTorneo, rivalDeTorneo, prediccionesDeZona,
-    login, fijarClave, clientes, guardarClientes, fichas, guardarFicha,
+    login, fijarClave, paseConsultar, paseCanjear, cortesias, guardarCortesia, clientes, guardarClientes, fichas, guardarFicha,
     estadosCompartibles, leerEstados, guardarEstados, leerPbp, ciclosSellados, sellarCiclo, ciclosGestion, ciclosGestionar, ciclosPublicar, ciclosPaquete, cerrarCiclo, ciclosPublicados, cicloFoto,
     varaJugadores, fichajesTorneos, fichajesZona, fichajesTiros, fichajesGuardarFichas, fichajesPadron, fichajesGuardarPadron,
   };

@@ -518,7 +518,59 @@ function publico(cat, opciones) {
   } : {}));
 }
 
+/**
+ * EL CATÁLOGO DE UN PASE DE CORTESÍA (lib/cortesias.js): UN club —el
+ * torneo, presentado como el club del invitado— con UNA categoría —la zona
+ * del pase—. Los demás clubes, el resto de las zonas, la fuente del fixture
+ * y cualquier dato comercial no viajan.
+ *
+ * Va como `tipo: 'cliente'` y con el equipo del pase como equipo propio: el
+ * panel lo trata como a un cliente de esa zona (escudo, `esEquipoPropio`,
+ * picker), que es lo que se quiere mostrar. Plan PLATA en estado `prueba`.
+ */
+function publicoCortesia(cat, pase) {
+  const c = cat || {};
+  const t = c[pase && pase.torneo];
+  const k = t && t.categorias && t.categorias[pase.zona];
+  if (!t || !k) return [];
+  const vence = String(pase.vence || '').slice(0, 10) || null;
+  return [{
+    id: pase.torneo,
+    nombre: t.nombre || pase.torneo,
+    liga: t.liga || '',
+    tipo: 'cliente',
+    cortesia: { id: pase.id, vence: pase.vence, equipo: pase.equipo, pbp: !!pase.pbp },
+    acento: t.acento || null,
+    competencia: t.competencia || null,
+    equipoPropio: pase.equipo,
+    partidosManuales: MUTAR.manualesDeTorneo(c, pase.torneo),
+    categorias: [{
+      slug: pase.zona,
+      label: k.label || pase.zona,
+      activo: !!k.sheetId,
+      nivel: k.nivel || null,
+      planEfectivo: pase.plan || 'PLATA',
+      planDe: 'cortesia',
+      estadoEfectivo: 'prueba',
+      estadoDe: 'cortesia',
+      venceEfectivo: vence,
+      venceDe: 'cortesia',
+      pruebaVencida: false,
+      equipoEfectivo: pase.equipo,
+      equipoDe: 'cortesia',
+      laboratorio: pase.pbp ? ['pbp'] : [],
+      laboratorioDe: 'cortesia',
+      torneo: pase.torneo,
+      zona: k.zona || null,
+      torneoDecl: declaracionDeTorneo(c, pase.torneo, k.zona || null),
+      ligaTorneo: t.liga || null,
+      bloqueada: false,
+    }],
+  }];
+}
+
 module.exports = {
+  publicoCortesia,
   CLAVE_KV, cargar, cargarParaEscribir, limpiarCache, validar, resolver, publico, desdeEntorno, huellaLibro,
   declaracionDeTorneo, fasesParaZona,
 };

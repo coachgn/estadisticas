@@ -3737,7 +3737,15 @@ function scoutModalExport() {
    ===================================================================== */
 const SCOUT_EXT = { base: null, datos: {}, idx: null, claves: '' };
 
+/* EL SCOUTING HÍBRIDO DEL PASE DE CORTESÍA (punto 179): el equipo del pase
+   con sus datos reales contra rivales de MUESTRA, que salen del snapshot
+   anónimo de la demo. Ningún rival de la liga entra al informe. */
+function scoutCortesia() {
+  return typeof SGADD_CORTESIA !== 'undefined' && SGADD_CORTESIA.activa();
+}
+
 function scoutRivalesLlave() {
+  if (scoutCortesia()) return SGADD_CORTESIA.rivales();
   return (typeof SGADD_FASES !== 'undefined' && SGADD_FASES.rivalesDeOtraZona)
     ? SGADD_FASES.rivalesDeOtraZona() : [];
 }
@@ -3753,8 +3761,9 @@ function scoutPedirRival(clave) {
   if (SCOUT_EXT.datos[clave]) return;
   SCOUT_EXT.datos[clave] = { estado: 'cargando' };
   const torneo = scoutTorneoAbierto();
-  const p = (torneo && typeof SGADD_DATA !== 'undefined' && SGADD_DATA.rivalDeTorneo)
-    ? SGADD_DATA.rivalDeTorneo(torneo, clave) : Promise.resolve(null);
+  const p = scoutCortesia() ? SGADD_CORTESIA.serial(clave).then(s => (s ? { equipo: s } : null))
+    : (torneo && typeof SGADD_DATA !== 'undefined' && SGADD_DATA.rivalDeTorneo)
+      ? SGADD_DATA.rivalDeTorneo(torneo, clave) : Promise.resolve(null);
   Promise.resolve(p).then((r) => {
     if (SCOUT_EXT.base !== base) return;
     SCOUT_EXT.datos[clave] = r && r.equipo ? { estado: 'ok', r: r }
@@ -3866,6 +3875,23 @@ function scoutPintar() {
   if (!st.idx) { root.innerHTML = SGADD_UI.cargando('Cargando la categoría…', (SGADD_APP.planillaActual() || {}).label); return; }
   scoutIdx();   // descarta la copia si cambió el índice
   const idxBase = scoutBase();
+  /* EN LA MUESTRA, solo el equipo propio y los rivales de muestra: un
+     rival de la liga elegido por el hash se suelta. */
+  if (scoutCortesia()) {
+    if (!SGADD_CORTESIA.rivales().length) {
+      SGADD_CORTESIA.cargarRivales().then(scoutPintar).catch(() => {});
+      root.innerHTML = SGADD_UI.cargando('Armando el informe de muestra…', 'Tu equipo contra un rival de muestra');
+      return;
+    }
+    const propioK = (idxBase.lista().find(e => SGADD.esEquipoPropio(e.clave)) || {}).clave || null;
+    ['local', 'visitante'].forEach((l) => {
+      const k = SCOUT_UI[l];
+      if (k && k !== propioK && !SGADD_CORTESIA.esRivalDeMuestra(k)) SCOUT_UI[l] = null;
+    });
+    if (!SCOUT_UI.local && !SCOUT_UI.visitante && propioK) {
+      SCOUT_UI.local = propioK; SCOUT_UI.visitante = SGADD_CORTESIA.rivales()[0].clave;
+    }
+  }
   const rivales = scoutRivalesLlave();
   /* EN MODO LLAVE se abre directo en el cruce: el equipo propio contra su
      rival de esa fase. Es lo que el DT viene a preparar. */
@@ -3935,20 +3961,22 @@ function scoutCruceSinDatos(lista) {
 }
 
 function scoutSelectores(idx, rivales) {
-  const equipos = idx.lista().filter(e => !e.__externo).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const cortesia = scoutCortesia();
+  const equipos = idx.lista().filter(e => !e.__externo && (!cortesia || SGADD.esEquipoPropio(e.clave)))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
   /* Los rivales de la llave que juegan en OTRA zona van aparte: se piden
      al servidor al elegirlos (punto 79). */
   const ext = (rivales || []).filter(r => !equipos.some(e => e.clave === r.clave));
   /* Los inscriptos sin partidos también van aparte (punto 93). Sin filtro
      de equipo, igual que los demás rivales: `forzarCruce` ya fija el
      propio de un lado. */
-  const sin = typeof inscriptosFaltantes === 'function' ? inscriptosFaltantes(idx) : [];
+  const sin = (!cortesia && typeof inscriptosFaltantes === 'function') ? inscriptosFaltantes(idx) : [];
   const opts = (sel) => equipos.map(e =>
     `<option value="${escapeAttr(e.clave)}" ${sel === e.clave ? 'selected' : ''}>${escapeHtml(e.nombre)}</option>`).join('')
     + (sin.length ? `<optgroup label="Sin partidos todavía">${sin.map(f =>
       `<option value="${escapeAttr(f.clave)}" ${sel === f.clave ? 'selected' : ''}>${escapeHtml(f.nombre)}</option>`).join('')}</optgroup>` : '')
-    + (ext.length ? `<optgroup label="Rival de la llave · otra zona">${ext.map(r =>
-      `<option value="${escapeAttr(r.clave)}" ${sel === r.clave ? 'selected' : ''}>${escapeHtml(r.nombre)} · ${escapeHtml(r.zonaLabel)} · ${escapeHtml(r.cruce)}${r.estado === 'proyectado' ? ' (proyectado)' : ''}</option>`).join('')}</optgroup>` : '');
+    + (ext.length ? `<optgroup label="${cortesia ? 'Rivales de muestra · datos anonimizados' : 'Rival de la llave · otra zona'}">${ext.map(r =>
+      `<option value="${escapeAttr(r.clave)}" ${sel === r.clave ? 'selected' : ''}>${escapeHtml(r.nombre)}${cortesia ? '' : ' · ' + escapeHtml(r.zonaLabel) + ' · ' + escapeHtml(r.cruce)}${r.estado === 'proyectado' ? ' (proyectado)' : ''}</option>`).join('')}</optgroup>` : '');
 
   /* Fecha, torneo y próximo rival son los únicos datos del informe que la
      planilla NO tiene (no hay hoja de fixture). Van como campo manual: un
@@ -3985,7 +4013,12 @@ function scoutSelectores(idx, rivales) {
           </select>
         </div>
       </div>
-      ${(rivales || []).length ? `
+      ${cortesia ? `
+        <p class="text-[11px] text-muted border-l-2 border-accent pl-2" data-scout-muestra="1">
+          Es la muestra: tu equipo va con <strong class="text-ink">sus datos reales</strong> y el rival es
+          <strong class="text-ink">de muestra, con datos anonimizados</strong> de otra liga. Con tu licencia,
+          el informe se arma contra cualquier rival de tu torneo.
+        </p>` : (rivales || []).length ? `
         <p class="text-[11px] text-muted border-l-2 border-accent pl-2">
           Tu rival en la llave juega en otra zona: sus datos son los de <strong class="text-ink">su fase regular</strong>,
           medidos contra la liga de tu zona. El servidor los entrega solo para ese cruce.

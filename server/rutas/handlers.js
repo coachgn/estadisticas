@@ -52,7 +52,13 @@ function contexto(peticion) {
   const token = tokenDeLaPeticion(peticion);
   const v = verificarToken(token);
   if (!v.ok) return { error: error(401, v.motivo, ERRORES[v.motivo] || ERRORES.FIRMA_INVALIDA) };
-  return { sesion: v.sesion, rol: v.rol, tokenClub: v.club, expiraEn: v.expiraEn };
+  /* DEFENSA EN PROFUNDIDAD: un token de cortesía que llega acá sin haber
+     pasado por el guard central (`rutas/cortesias.js`) no se atiende. */
+  if (v.cortesia && !(peticion && peticion.cortesia && peticion.cortesia.id === v.cortesia)) {
+    return { error: error(403, 'CORTESIA_NO_INCLUYE', 'La muestra no incluye esto.') };
+  }
+  return { sesion: v.sesion, rol: v.rol, tokenClub: v.club, expiraEn: v.expiraEn,
+    cortesia: (peticion && peticion.cortesia) || null };
 }
 
 /**
@@ -205,6 +211,21 @@ async function manejarCatalogo(peticion, deps) {
      pintado del menú. */
   let planUsuario = ctx.sesion.plan;
   let equipoUsuario = ctx.sesion.equipoAsignado;
+  /* EL PASE DE CORTESÍA ve un catálogo de UN club y UNA categoría. */
+  if (ctx.cortesia) {
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        usuario: { email: ctx.sesion.email, rol: ctx.rol, plan: ctx.cortesia.plan || 'PLATA',
+          equipoAsignado: ctx.cortesia.equipo, expiraEn: ctx.expiraEn,
+          cortesia: { id: ctx.cortesia.id, vence: ctx.cortesia.vence } },
+        clubes: catalogo.publicoCortesia(cat.catalogo, ctx.cortesia),
+        origen: cat.origen,
+        aviso: null,
+      },
+    };
+  }
   if (clubDelToken) {
     const slugs = Object.keys(clubDelToken.categorias || {});
     const abre = slugs.filter(s => clubDelToken.categorias[s].sheetId
@@ -250,8 +271,16 @@ async function manejarEquipos(peticion, deps) {
   const q = (peticion && peticion.query) || {};
   const params = (peticion && peticion.params) || {};
   const cascada = await catalogo.cargar(deps);
-  const cat = catalogo.resolver(cascada.catalogo, params.clubId, q.categoria);
-  if (!cat) return error(404, 'SIN_CATEGORIA', 'No existe esa categoría.');
+  const catBase = catalogo.resolver(cascada.catalogo, params.clubId, q.categoria);
+  if (!catBase) return error(404, 'SIN_CATEGORIA', 'No existe esa categoría.');
+  /* EL PASE DE CORTESÍA: la zona del torneo vale como una categoría en
+     PRUEBA del Plan PLATA, con el play-by-play si el pase lo incluye. Lo
+     que se recorta es lo de siempre: el libro con el equipo del token. */
+  const cat = ctx.cortesia ? Object.assign({}, catBase, {
+    suscripcion: Object.assign({}, catBase.suscripcion, { estado: 'prueba', plan: ctx.cortesia.plan || 'PLATA',
+      vence: String(ctx.cortesia.vence || '').slice(0, 10) || null }),
+    laboratorio: ctx.cortesia.pbp ? ['pbp'] : [],
+  }) : catBase;
 
   /* EL TOKEN ESTÁ ATADO A UN CLUB. Sin esto, el token de un cliente de
      DEPORTIVO serviría para pedir el libro de Reconquista: su
@@ -304,7 +333,8 @@ async function manejarEquipos(peticion, deps) {
        acá, antes de las alertas y del recorte por plan. */
     const vinc = MULTI.vinculadosDe(cascada.catalogo, cat.clubId, cat.slug);
     if (vinc.length) {
-      const eq = AUTH.equipoDeCategoria((cascada.catalogo || {})[cat.clubId] || {}, cat.slug).equipo;
+      const eq = ctx.cortesia ? ctx.cortesia.equipo
+        : AUTH.equipoDeCategoria((cascada.catalogo || {})[cat.clubId] || {}, cat.slug).equipo;
       libro = await MULTI.leerVinculados(libro, vinc, eq ? NUCLEO.claveEquipo(eq) : null,
         (id) => sheets.obtenerLibro(id, deps));
     }
@@ -342,7 +372,8 @@ async function manejarEquipos(peticion, deps) {
   const rec = reglas.recortarLibro(libro, sesion);
   /* El plan que se hace valer, una sola vez: lo mira el panel para el
      distintivo y lo miden los bloques de abajo. */
-  const planVigente = planEfectivo(cat.suscripcion || {}, ctx.sesion, cascada.origen);
+  const planVigente = ctx.cortesia ? AUTH.normalizarPlan(ctx.cortesia.plan || 'PLATA')
+    : planEfectivo(cat.suscripcion || {}, ctx.sesion, cascada.origen);
   return {
     status: 200,
     body: {
@@ -385,6 +416,9 @@ async function manejarEquipos(peticion, deps) {
            mira para ofrecer los bloques de play-by-play, y `/api/v1/pbp`
            las hace cumplir: la pestaña es la vidriera, no el guard. */
         capas: cat.laboratorio || [],
+        /* El pase de cortesía, para la barra de la muestra y el Scouting
+           híbrido (el rival sale de la demo, no de la liga). */
+        cortesia: ctx.cortesia ? { id: ctx.cortesia.id, vence: ctx.cortesia.vence } : null,
         /* Se declara QUÉ se recortó. Un panel que recibe menos filas sin
            saberlo calcularía percentiles sobre una liga fantasma; y el DT
            tiene derecho a saber que está viendo un recorte. */

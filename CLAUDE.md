@@ -211,6 +211,9 @@ node test-tour.js           # 146 tests · el hero de la landing, los logos sin 
 node test-diagnostico-rival.js # 61 tests · el soporte de decisión del Scouting: la versión perdedora, los duelos
                            #             cruzados con sus volúmenes de umbral, el FODA y las tres cosas (puntos 146 y 147)
 
+node test-cortesias.js     #  99 tests · los pases de cortesía: el motor, la lista blanca del guard sobre TODAS las rutas,
+                           #             el catálogo y el libro recortados al pase, la barra y el Scouting híbrido (punto 179)
+
 node test-backend.js       # 468 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
@@ -339,7 +342,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=382`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=383`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -17191,3 +17194,59 @@ Assets en `?v=382`. Segunda vuelta del punto 177, con lo que el club vio navegan
   decidir qué.
 - Los números de las métricas siguen siendo reales: quien conozca la Conferencia Norte 25/26 podría reconocer un equipo por
   sus métricas. Perturbarlos quitaría realismo; es una decisión del club.
+
+---
+
+## 179. LOS PASES DE CORTESÍA · una muestra con datos reales sin dar de alta un cliente (2026-11-14)
+
+Assets en `?v=383`. `test-cortesias.js` (99) fija todo. **Fase 1**: motor, Panel Master, token, guard y la muestra.
+
+```
+server/lib/cortesias.js     PURO + KV: armar, estado, canje, mensaje de WhatsApp, lista blanca de rutas
+server/rutas/cortesias.js   el guard central y las rutas (admin y puerta)
+js/sgadd-cortesia.js        la puerta del pase, la barra, los rivales de muestra y el bloque del Panel Master
+```
+
+- **KV propio, `sgadd:cortesias`** (un campo por pase). No toca `sgadd:catalogo` ni `sgadd:clientes`; hay test que cuenta las escrituras.
+- **Un pase es una ZONA de torneo + UN equipo + N días**, Plan PLATA en estado `prueba`, con el play-by-play de su equipo
+  (decisión del club). Sirve para temporada vigente o anterior: es la zona que se elija. Se valida contra el catálogo:
+  torneo `tipo: 'torneo'`, zona regular con libro, equipo de la zona, 1 a 60 días, nombre y WhatsApp obligatorios.
+- **Del código se guarda la huella** (sha256): para reenviar el link se REGENERA y el viejo deja de servir.
+- **Vence a las 23:59 de Argentina del día N** (hoy = día 0). Los días se cuentan por calendario, igual en server y panel.
+- **El token**: `CLIENTE + PLATA` con `cortesia: <id>`, `club` = el torneo, `categoria` = la zona, el equipo del pase,
+  **mail sintético** `pase.<id>@cortesia.motorstats.ar` (el rol sale del mail: un mail de admin abriría todo) y dura como
+  mucho 72 h (el mismo link lo renueva). `verificarToken` rechaza un token de cortesía con rol de admin.
+- **EL GUARD CENTRAL** (`app.use(cortesias.guard)` antes de TODAS las rutas): con un token de cortesía relee el pase en KV
+  en cada pedido (revocar corta ya; KV caído = 503, no se abre), exige que token y pase coincidan y deja pasar solo la
+  **lista blanca** (`C.rutaPermitida`): `GET` catálogo, `equipos/<torneo>?categoria=<zona>` (sin `equipo` ajeno),
+  `pbp/<torneo>/<zona>` (índice o SU equipo), `fixture/<torneo>`, `torneos/<torneo>/llave`. Una ruta nueva entra cerrada:
+  el test recorre las rutas registradas en la app. **Defensa en profundidad**: `contexto()` de handlers.js y `pbp.js` no
+  atienden un token de cortesía que no pasó por el guard.
+- **Lo que ve**: `catalogo.publicoCortesia` manda UN club (el torneo, presentado como `tipo: 'cliente'` con el equipo del
+  pase como propio) y UNA categoría. `/equipos` lo trata como categoría PLATA en prueba: `Base Datos J` recortada a SU
+  equipo como a cualquier cliente; promedios, tabla y rankings de liga completos (decisión del club). `alcance.cortesia`.
+  Estados compartidos apagados (`estadosCompartibles`): lo que marque queda en su navegador.
+- **Scouting híbrido**: el equipo del pase con sus datos reales contra **rivales de muestra** (A, B y C: el primero, uno
+  del medio y el último del snapshot de la demo, ya público), injertados en la copia del índice del Scouting y medidos
+  contra su liga («Liga de muestra»). El selector solo ofrece al propio y a esos tres; un rival de la liga puesto por el
+  hash se suelta. El play-by-play de un rival de muestra no existe (el guard da 403 y la card queda vacía).
+- **La puerta**: `?club=<torneo>&pase=<código>`. `sgadd-club.js` saca el código de la barra y lo guarda en sessionStorage;
+  `puertaDeIngreso()` abre aunque haya otra sesión. Formulario: nombre, WhatsApp (obligatorio; se muestra la pista
+  «termina en 0000», nunca el número), mail opcional, rol. Mismo WhatsApp = mismo contacto; hasta **3 contactos distintos**
+  por pase (cada reenvío es un lead anotado). Al canjear recarga en `#principal`.
+- **La barra**: «🎟 Muestra de cortesía · <equipo> · te quedan N días» + «Reservar tu licencia» (wa.me de MotorStats con
+  el mensaje prearmado). No se imprime.
+- **Panel Master · «🎟 Pases de cortesía»** (plegado, `#hubCortesias`): torneo → zona → equipo, vigencia 3/5/7/10/15 o
+  días personalizados, DT con WhatsApp obligatorio, nota, play-by-play. Crear/Reenviar/Extender/Revocar pasan por el modal
+  de confirmación. Al crear: link (solo esa vez), mensaje con la voz de los mails de alta y **«Enviar por WhatsApp»**
+  (`wa.me/<DT>?text=…`). La lista muestra estado, días, contactos e ingresos. Revocar no borra: el registro es el lead.
+
+### Fases que siguen
+- **Fase 2**: la demanda entrante («Agendar demo con mis datos» → solicitud `origen: 'solicitud'`, que el admin aprueba en
+  un clic), telemetría de secciones vistas, la pantalla «tu muestra terminó» y el PDF con la firma «Muestra de cortesía».
+- **Fase 3**: «Convertir en cliente» (alta prellenada y pase `convertido`) y el aviso de 2 días antes por WhatsApp/mail.
+
+### Para producción
+1. Deploy del backend (`cd server && npx vercel --prod`): sin él, el link del pase dice «no válido».
+2. Push del front (`?v=383`, `sgadd.css` regenerado, `server/lib/compartido/sgadd-data.js` sincronizado).
+

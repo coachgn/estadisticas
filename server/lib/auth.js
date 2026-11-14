@@ -75,6 +75,10 @@ function firmarToken(datos, opciones) {
        alta no puede regalar el módulo que se cobra aparte. */
     plan: AUTH.parsearSesion({ email: d.email, plan: d.plan }).plan,
   };
+  /* EL PASE DE CORTESÍA (lib/cortesias.js): el token lleva el id del pase y
+     el guard central (`rutas/cortesias.js`) lo valida contra KV en cada
+     pedido y le abre solo la lista blanca de rutas. */
+  if (d.cortesia) payload.cortesia = String(d.cortesia);
   return jwt.firmar(payload, secreto(), {
     expiraEn: o.expiraEn || EXPIRA_POR_DEFECTO,
     issuer: 'sgadd',
@@ -109,6 +113,9 @@ function verificarToken(token) {
     plan: p.plan,
   });
   if (!sesion) return { ok: false, motivo: 'PAYLOAD_INVALIDO' };
+  /* Un pase de cortesía con el rol de administrador no puede existir: su
+     mail es sintético. Si apareciera, se rechaza en vez de abrir todo. */
+  if (p.cortesia && AUTH.rol(sesion) !== AUTH.ROLES.CLIENTE) return { ok: false, motivo: 'PAYLOAD_INVALIDO' };
 
   return {
     ok: true,
@@ -116,6 +123,7 @@ function verificarToken(token) {
     rol: AUTH.rol(sesion),
     club: p.club || null,
     categoria: p.categoria || null,
+    cortesia: p.cortesia || null,
     expiraEn: p.exp ? new Date(p.exp * 1000).toISOString() : null,
   };
 }

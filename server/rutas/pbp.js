@@ -60,6 +60,12 @@ function error(status, codigo, mensaje) {
 async function resolver(peticion, deps) {
   const v = verificarToken(tokenDeLaPeticion(peticion));
   if (!v.ok) return { error: error(401, v.motivo, 'El token de acceso no es válido.') };
+  /* El pase de cortesía (rutas/cortesias.js): el guard central ya validó el
+     pase y que el equipo pedido sea el suyo. Sin el guard, no se atiende. */
+  const cort = (peticion && peticion.cortesia) || null;
+  if (v.cortesia && !(cort && cort.id === v.cortesia && cort.pbp)) {
+    return { error: error(403, 'CORTESIA_NO_INCLUYE', 'La muestra no incluye esto.') };
+  }
 
   const params = (peticion && peticion.params) || {};
   const clubId = String(params.clubId || '').toLowerCase();
@@ -79,13 +85,14 @@ async function resolver(peticion, deps) {
     return { error: error(404, 'SIN_CATEGORIA', 'Esa categoría no existe.') };
   }
   const cat = catalogo.resolver(cascada.catalogo, clubId, slug);
-  if (!esAdmin && !AUTH.tieneAcceso(mutar.estadoEfectivo(cat.suscripcion))) {
+  if (!esAdmin && !cort && !AUTH.tieneAcceso(mutar.estadoEfectivo(cat.suscripcion))) {
     return { error: error(403, 'SUSCRIPCION', 'El acceso a esta categoría no está activo.') };
   }
-  if (!esAdmin && (cat.laboratorio || []).indexOf(CAPA) === -1) {
+  if (!esAdmin && !cort && (cat.laboratorio || []).indexOf(CAPA) === -1) {
     return { error: error(403, 'SIN_CAPA', 'El análisis de play-by-play no está habilitado para esta categoría.') };
   }
-  return { clave: claveDeDatos(cascada.catalogo, clubId, slug), esAdmin: esAdmin, habilitada: (cat.laboratorio || []).indexOf(CAPA) !== -1 };
+  return { clave: claveDeDatos(cascada.catalogo, clubId, slug), esAdmin: esAdmin,
+    habilitada: !!cort || (cat.laboratorio || []).indexOf(CAPA) !== -1 };
 }
 
 /**

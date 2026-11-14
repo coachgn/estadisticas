@@ -2011,7 +2011,10 @@ const SGADD_HUB = (function () {
     pedirEscudos(cs);
     return (typeof SGADD_TORNEOS !== 'undefined'
       ? '<div id="hubTorneos" class="space-y-4">' + SGADD_TORNEOS.html(cs) + '</div>' : '')
-      + '<div class="space-y-4">' + html() + '</div>';
+      + '<div class="space-y-4">' + html() + '</div>'
+      /* Los pases de cortesía (punto 179): una muestra sin dar de alta un cliente. */
+      + (typeof SGADD_CORTESIA !== 'undefined'
+        ? '<div id="hubCortesias" class="mt-4">' + SGADD_CORTESIA.adminHtml(cs) + '</div>' : '');
   }
 
   /** La intención que se manda. Nunca un catálogo (punto 30). */

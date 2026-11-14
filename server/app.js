@@ -64,6 +64,12 @@ function crearApp(opciones) {
   const RUTA_CERRAR = /^\/api\/v1\/ciclos\/[^/]+\/[^/]+\/cerrar$/;
   app.use((req, res, next) => (RUTA_CERRAR.test(req.path) ? jsonInforme : jsonChico)(req, res, next));
 
+  /* EL GUARD DE LOS PASES DE CORTESÍA, antes de TODAS las rutas: un token
+     de cortesía solo llega a las de la lista blanca, y con su pase vigente
+     en KV. Ver rutas/cortesias.js. */
+  const cortesias = require('./rutas/cortesias.js');
+  app.use(cortesias.guard(o.deps));
+
   const responder = (fn) => async (req, res) => {
     try {
       const r = await fn(req, o.deps);
@@ -163,6 +169,12 @@ function crearApp(opciones) {
      sería pedir la llave para entrar a buscar la llave. Lo que las cuida
      es el limitador, el bloqueo por intentos y el codigo de invitación. */
   app.post('/api/v1/login', responder(h.manejarLogin));
+  /* El pase de cortesía se canjea sin token, igual que el login: el link
+     trae un código de un uso por contacto y lo cuida el limitador. */
+  app.post('/api/v1/pase/consultar', responder(cortesias.manejarPaseConsultar));
+  app.post('/api/v1/pase/canjear', responder(cortesias.manejarPaseCanjear));
+  app.get('/api/v1/cortesias', responder(cortesias.manejarCortesias));
+  app.post('/api/v1/cortesias', responder(cortesias.manejarCortesiasEscribir));
   app.post('/api/v1/clave', responder(h.manejarClave));
 
   /* Los accesos de cada club. Las dos con gate de ADMIN adentro del

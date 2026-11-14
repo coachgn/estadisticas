@@ -97,6 +97,26 @@ const CLUB = (function () {
     } catch (e) { /* sin history */ }
     if (/^[a-z0-9_.:-]{1,80}$/i.test(c)) { try { window.sessionStorage.setItem(CICLO_PENDIENTE, c); } catch (e) { /* sin storage: no se recuerda */ } }
   })();
+  /* EL PASE DE CORTESÍA (punto 179): `?club=<torneo>&pase=<código>`. Se saca
+     de la barra en el primer script, como el código de invitación, y se
+     guarda en sessionStorage hasta que se canjea: el código no puede quedar
+     en el historial ni en el link que alguien copie del panel. */
+  const PASE_PENDIENTE = 'sgadd.pase';
+  (function () {
+    let q;
+    try { q = new URLSearchParams(window.location.search); } catch (e) { return; }
+    if (!q.has('pase')) return;
+    const c = String(q.get('pase') || '').trim();
+    q.delete('pase');
+    try {
+      const resto = q.toString();
+      window.history.replaceState(window.history.state, '', window.location.pathname + (resto ? '?' + resto : '') + (window.location.hash || ''));
+    } catch (e) { /* sin history */ }
+    if (/^[A-Za-z0-9_-]{20,64}$/.test(c)) { try { window.sessionStorage.setItem(PASE_PENDIENTE, c); } catch (e) { /* sin storage */ } }
+  })();
+  function pasePendiente() { try { return window.sessionStorage.getItem(PASE_PENDIENTE) || null; } catch (e) { return null; } }
+  function consumirPase() { try { window.sessionStorage.removeItem(PASE_PENDIENTE); } catch (e) { /* nada */ } }
+
   /** El ciclo que pidió el link del mail (sin consumirlo). */
   function cicloPendiente() { try { return window.sessionStorage.getItem(CICLO_PENDIENTE) || null; } catch (e) { return null; } }
   function consumirCiclo() { try { window.sessionStorage.removeItem(CICLO_PENDIENTE); } catch (e) { /* nada */ } }
@@ -199,6 +219,9 @@ const CLUB = (function () {
     let api = '';
     try { api = q.get('api') || (typeof window !== 'undefined' && window.SGADD_API) || ''; } catch (e) { api = ''; }
     if (!api) return false;
+    /* Con un pase por canjear la puerta se abre aunque haya otra sesión:
+       el que tocó el link vino a ver la muestra. */
+    if (pasePendiente()) return true;
     return !tokenGuardadoVigente();
   }
 
@@ -939,7 +962,7 @@ const CLUB = (function () {
     return true;
   }
 
-  return { TEMA, estado, cargar, aplicar: aplicarSeguro, reconciliar, confirmarSinConfig, reconciliarConfig, patronDeCategoria, credito, idDesdeUrl, esLanding, puertaDeIngreso, accesoDeUrl, cicloPendiente, consumirCiclo, enDemo, debug, marcarRender,
+  return { TEMA, estado, cargar, aplicar: aplicarSeguro, reconciliar, confirmarSinConfig, reconciliarConfig, patronDeCategoria, credito, idDesdeUrl, esLanding, puertaDeIngreso, accesoDeUrl, cicloPendiente, consumirCiclo, pasePendiente, consumirPase, enDemo, debug, marcarRender,
            reintentarEscudo, aclararHastaLegible, oscurecerHastaLegible, contraste,
            mezclarHex, colorDeEscudo, colorDeImagen,
            get cfg() { return estado.cfg; }, get aplicado() { return aplicado; } };
