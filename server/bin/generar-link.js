@@ -52,7 +52,7 @@ Opciones:
   --equipo   <EQUIPO>   el equipo asignado, como lo escribe la planilla
   --plan     BRONCE|PLATA|ORO  por defecto BASICO
   --expira   <7d|30d|12h> por defecto 7d
-  --base     <url>      por defecto https://coachgn.github.io/estadisticas/
+  --base     <url>      por defecto https://motorstats.ar/
 
 OJO con el nombre del equipo: se compara con claveEquipo(), así que la
 LETRA importa. "RECONQUISTA" no reconoce a "RECONQUISTA 'A'" y el cliente
@@ -79,7 +79,7 @@ se queda sin ver ningún equipo (punto 19 de CLAUDE.md).
   }
   try {
     const r = generarLinkCliente({
-      base: o.base || 'https://coachgn.github.io/estadisticas/',
+      base: o.base || 'https://motorstats.ar/',
       email: o.email,
       club: club,
       categoria: o.categoria || null,

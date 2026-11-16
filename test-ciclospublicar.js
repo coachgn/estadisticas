@@ -239,7 +239,7 @@ const estadoDoc = () => Object.values(hashes[CIC.claveGestion('jujuy', 'jujuy-no
     r = await C(tokAdmin, Object.assign({}, base, { publicar: false, enviar: 'prueba' }), { transporte: tP });
     check('la prueba manda SOLO al mail del admin', r.status === 200 && tP.enviados.length === 1 && tP.enviados[0].para === 'freytesgn@gmail.com' && /^\[PRUEBA\]/.test(tP.enviados[0].asunto));
     check('la prueba no sella ni publica', !r.body.sellado && !r.body.publicado && !(hashes[CIC.claveKV('jujuy', 'jujuy-sur')] || {})[PBP.campoDeEquipo('JUJUY') + '|c0n4']);
-    check('el PDF sale de la foto: las secciones, el estilo y los detalles abiertos', /<h2 class="foto-h2">Principal<\/h2>/.test(html) && /\.ci\{color:red\}/.test(html) && /<details open>/.test(html) && /<base href="https:\/\/coachgn\.github\.io\/estadisticas\/">/.test(html));
+    check('el PDF sale de la foto: las secciones, el estilo y los detalles abiertos', /<h2 class="foto-h2">Principal<\/h2>/.test(html) && /\.ci\{color:red\}/.test(html) && /<details open>/.test(html) && /<base href="https:\/\/motorstats\.ar\/">/.test(html));
     r = await L(tokJujuy);
     check('el cuerpo técnico no ve nada antes de publicar', r.status === 200 && r.body.publicados.length === 0 && r.body.envioClientes === undefined);
 
@@ -249,7 +249,7 @@ const estadoDoc = () => Object.values(hashes[CIC.claveGestion('jujuy', 'jujuy-no
       { id: 'roto<script>', base: 1, meta: 2 }, { id: 'sin-numeros', base: 'x', meta: 1 }] };
     r = await C(tokAdmin, Object.assign({}, base, { publicar: true, enviar: 'prueba', metas: metasN }), { transporte: tQ });
     check('publicar sella, publica y manda la prueba', r.status === 200 && r.body.sellado && r.body.publicado && tQ.enviados.length === 1);
-    check('el link del mail abre Ciclos en ese ciclo publicado', /club=jujuy&(amp;)?ciclo=c0n4#ciclos/.test(tQ.enviados[0].html) && CIC.linkDelCiclo('jujuy', 'c0n4') === 'https://coachgn.github.io/estadisticas/?club=jujuy&ciclo=c0n4#ciclos');
+    check('el link del mail abre Ciclos en ese ciclo publicado', /club=jujuy&(amp;)?ciclo=c0n4#ciclos/.test(tQ.enviados[0].html) && CIC.linkDelCiclo('jujuy', 'c0n4') === 'https://motorstats.ar/?club=jujuy&ciclo=c0n4#ciclos');
     r = await L(tokJujuy);
     const mt = r.body.publicados[0] && r.body.publicados[0].metas;
     check('las metas quedan congeladas con el ciclo publicado', mt && mt.metas.length === 1 && mt.metas[0].id === 't3r' && mt.metas[0].base === 0.40 && mt.metas[0].meta === 0.35);

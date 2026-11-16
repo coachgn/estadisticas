@@ -25,7 +25,7 @@ const TITULOS = { evolucion: 'Evolución', principal: 'Principal', equipos: 'Equ
 const MAX_BYTES = 3 * 1024 * 1024;     // el HTML entero, sin comprimir
 const MAX_ESTILO = 120 * 1024;
 /* Las rutas relativas del informe (escudos, logos) se resuelven contra el panel publicado. */
-const BASE_PANEL = 'https://coachgn.github.io/estadisticas/';
+const BASE_PANEL = 'https://motorstats.ar/';
 
 /** Valida la foto que manda el navegador. Devuelve { ok, foto } o { ok: false, motivo }. */
 function validar(crudo) {

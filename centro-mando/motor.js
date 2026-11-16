@@ -411,7 +411,7 @@ function sumarABandeja(b, p, sello) {
    con `data-document-role="page"` e imágenes por URL pública.
    -------------------------------------------------------------------- */
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const LOGO = 'https://coachgn.github.io/estadisticas/logos/motorlogo.PNG';
+const LOGO = 'https://motorstats.ar/logos/motorlogo.PNG';
 
 /* --------------------------------------------------------------------
    LA NARRATIVA DE REFERENTE · cuatro momentos, cantidad de placas libre

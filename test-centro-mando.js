@@ -164,7 +164,7 @@ titulo('La exportación');
   const h = M.placasHtml(p, 'Mi "gancho"', 'Contexto a mano');
   check('gancho, cierre y la placa de contexto', (h.match(/data-document-role="page"/g) || []).length === 3);
   check('todo lo que entra se escapa', h.indexOf('<script>') === -1 && h.indexOf('Título <b>') === -1 && h.indexOf('&quot;gancho&quot;') !== -1);
-  check('las imágenes van por URL pública, no en data URI', !/data:image/.test(h) && /https:\/\/coachgn\.github\.io/.test(h));
+  check('las imágenes van por URL pública, no en data URI', !/data:image/.test(h) && /https:\/\/motorstats\.ar/.test(h));
   check('el carrusel es 3:4 y el reel 9:16', /height:1350px/.test(h) && /height:1920px/.test(M.placasHtml(Object.assign({}, p, { formato: 'reel' }))));
   check('sin contexto no hay placa de contexto', (M.placasHtml(p, 'g').match(/data-document-role="page"/g) || []).length === 2);
   const md = M.resumenMd(p, 'Gancho elegido', 'Contexto');

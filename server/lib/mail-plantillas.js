@@ -29,7 +29,7 @@ const NOMBRE_REMITENTE = 'MotorStats AR';
    clientes escribirían a un teléfono que nadie atiende. */
 const WHATSAPP = '5492216143994';
 const INSTAGRAM = 'motorstats.ar';
-const PANEL_URL = 'https://coachgn.github.io/estadisticas/';
+const PANEL_URL = 'https://motorstats.ar/';
 
 /* Los metales de cada plan, los mismos del panel (punto 25). En el mail el
    badge lleva texto oscuro sobre el metal: plata y oro son claros. */

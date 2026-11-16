@@ -65,7 +65,7 @@ function config() {
     clientSecret: process.env.CANVA_CLIENT_SECRET || '',
     redirect: process.env.CANVA_REDIRECT_URI || 'http://127.0.0.1:8772/oauth/redirect',
     tokenArchivo: process.env.CANVA_TOKEN_ARCHIVO || path.join(__dirname, '.canva-token.json'),
-    pages: (process.env.PAGES_BASE || 'https://coachgn.github.io/estadisticas/').replace(/\/?$/, '/'),
+    pages: (process.env.PAGES_BASE || 'https://motorstats.ar/').replace(/\/?$/, '/'),
     esperaPagesMs: Number(process.env.CANVA_ESPERA_PAGES_MS || 20 * 60 * 1000),
   };
 }

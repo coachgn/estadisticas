@@ -306,7 +306,7 @@ function paraPuerta(pase, opciones) {
    EL LINK Y EL MENSAJE DE WHATSAPP
    -------------------------------------------------------------------- */
 
-const PANEL_URL = 'https://coachgn.github.io/estadisticas/';
+const PANEL_URL = 'https://motorstats.ar/';
 
 function linkDelPase(pase, codigo, base) {
   const b = base || PANEL_URL;
