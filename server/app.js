@@ -13,6 +13,11 @@ const h = require('./rutas/handlers.js');
 
 const { limitador } = require('./lib/limitador.js');
 
+/* El dominio propio del panel (motorstats.ar, vía GitHub Pages). Va fijo en
+   el código y no solo en ORIGENES_PERMITIDOS (variable de Vercel, que no se
+   puede leer desde acá): así el cambio de dominio no depende de editarla. */
+const ORIGENES_PROPIOS = ['https://motorstats.ar', 'https://www.motorstats.ar'];
+
 function crearApp(opciones) {
   const o = opciones || {};
   const env = o.entorno || entorno();
@@ -41,7 +46,7 @@ function crearApp(opciones) {
          el propio servidor, un health check): se dejan pasar porque CORS
          no las protege de nada. Lo que protege el token es otra capa. */
       if (!origen) return cb(null, true);
-      if (env.origenes.indexOf(origen) !== -1) return cb(null, true);
+      if (env.origenes.indexOf(origen) !== -1 || ORIGENES_PROPIOS.indexOf(origen) !== -1) return cb(null, true);
       return cb(new Error('Origen no permitido: ' + origen));
     },
     /* POST entra por el alta del Panel Master. Sin él, el preflight del
