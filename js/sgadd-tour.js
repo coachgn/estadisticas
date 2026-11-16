@@ -532,6 +532,8 @@ const SGADD_TOUR = (function () {
 
   function terminar() {
     const n = $('tourCard');
+    /* La medición después del clic (punto 180): un recorrido terminado. */
+    try { if (typeof SGADD_MEDICION !== 'undefined') SGADD_MEDICION.registrar('tour_fin'); } catch (e) { /* nada */ }
     /* EL MOMENTO «AHA!» ES EL SCOUTING: recién ahí, y solo ahí, se ofrece
        ver el informe con los datos del propio equipo. En las demás
        secciones la guía no vende nada. */

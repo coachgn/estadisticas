@@ -97,7 +97,7 @@ async function manejarCronAlertasPartidos(peticion, deps) {
   const simular = q === '1' || q === 'true';
   const salida = [];
   for (const base of alertas.PERFILES) {
-    const perfil = Object.assign({}, base, { calendarId: env.ALERTAS_CALENDAR_ID || base.calendarId });
+    const perfil = Object.assign({}, base, { calendarId: env.TORNEOS_MANUALES_CALENDAR_ID || env.ALERTAS_CALENDAR_ID || base.calendarId });
     try {
       const { partidos, origen } = await partidosDe(perfil, Object.assign({}, d, { simular: simular }));
       const r = await alertas.ejecutar(perfil, partidos,

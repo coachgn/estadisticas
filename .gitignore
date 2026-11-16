@@ -25,3 +25,7 @@ COMPARATIVAS EJEMPLOS/
 # Salida de generar-contenido.js: numeros y nombres para redes. No se publica.
 contenido/
 centro-mando/.canva-token.json
+
+# Equipo de marketing (estrategia privada: el repo es publico)
+.claude/agents/
+.claude/commands/equipo.md

@@ -949,6 +949,8 @@ const SGADD_DEMO = (function () {
       return;
     }
     window.open(enlace(datos), '_blank', 'noopener');
+    /* La medición después del clic (punto 180): el pedido de demo. */
+    try { if (typeof SGADD_MEDICION !== 'undefined') SGADD_MEDICION.registrar('pedido_demo'); } catch (e) { /* nada */ }
     /* LA SOLICITUD QUEDA ANOTADA (Fase 2): el admin la ve en el Panel
        Master y la aprueba con un pase. Va DESPUÉS de abrir WhatsApp —el
        `window.open` tiene que salir en el mismo gesto o el navegador lo

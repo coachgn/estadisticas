@@ -25,7 +25,9 @@ function t(nombre, cond, extra) {
   if (cond) ok++; else { mal++; console.log('  X ' + nombre + (extra !== undefined ? '  → ' + JSON.stringify(extra) : '')); }
 }
 
-const PERFIL = Object.assign({}, A.PERFILES[0], { calendarId: 'prueba@gmail.com' });
+// Los tests 1-7 miran solo el aviso de -4 dias; el dia del partido va en la seccion 8.
+const PERFIL = Object.assign({}, A.PERFILES[0], { calendarId: 'prueba@gmail.com', diaDePartido: false });
+const PERFIL_DIA = Object.assign({}, A.PERFILES[0], { calendarId: 'prueba@gmail.com' });
 // 2026-11-01 12:00 en Argentina
 const AHORA = Date.parse('2026-11-01T15:00:00Z');
 const P = (fecha, local, visitante, extra) => Object.assign({ fecha, hora: '21:00', local, visitante, estado: 'PROGRAMADO' }, extra || {});
@@ -180,7 +182,7 @@ function apiCalendar(opciones) {
     }, calendario: cal, entorno: ENV, ahora: AHORA });
   cat.cargar = cargarOriginal;
   t('la fuente cae pero hay copia vieja: se usa y crea la alerta', rv.status === 200 && rv.body.perfiles[0].origen === 'kv-vencido'
-    && rv.body.perfiles[0].resumen.creadas === 1 && /otro%40gmail\.com/.test(apiOk.llamadas.join('\n')), rv.body);
+    && rv.body.perfiles[0].resumen.creadas === 2 && /otro%40gmail\.com/.test(apiOk.llamadas.join('\n')), rv.body);
 
   /* ---- 7 · simular=1 · el plan sin escribir nada ---------------------- */
   cal.limpiarCache();
@@ -204,9 +206,43 @@ function apiCalendar(opciones) {
   t('el cron en simulacion: 200, no escribe en Calendar ni en KV', rs.status === 200 && rs.body.perfiles[0].simulacion === true
     && apiSim2.llamadas.length === 0 && escrituras.length === 0, { st: rs.status, ll: apiSim2.llamadas.length, esc: escrituras.length });
   const rr = await api.manejarCronAlertasPartidos({ headers: reqSim.headers, query: {} }, { env: { CRON_SECRET: 'secreto-largo-1234' }, kv: kvEsc, fetch: apiSim2.fetch, calendario: cal, entorno: ENV, ahora: AHORA });
-  t('sin simular el mismo pedido SI escribe (la guarda no es decorativa)', rr.body.perfiles[0].resumen && rr.body.perfiles[0].resumen.creadas === 3 && escrituras.length === 1, rr.body);
+  t('sin simular el mismo pedido SI escribe (la guarda no es decorativa)', rr.body.perfiles[0].resumen && rr.body.perfiles[0].resumen.creadas === 7 && escrituras.length === 1, rr.body);
   fixtureApi.refrescar = refrescarOriginal;
   catV.cargar = cargarO;
+
+  /* ---- 8 · el dia del partido y el aviso corrido ---------------------- */
+  const pd = A.planificar(partidos, PERFIL_DIA, AHORA);
+  const dias = pd.alertas.filter(a => a.tipo === 'dia');
+  t('cada partido futuro suma su evento del dia (el del 03/11 tambien: la alerta paso, el partido no)',
+    dias.map(a => a.fechaPartido).join() === '2026-11-03,2026-11-20,2026-11-30,2026-12-04', dias.map(a => a.fechaPartido));
+  t('el evento del dia va a la hora del partido, 2 h, con popup una hora antes',
+    dias[1].inicio === '2026-11-20T21:00:00-03:00' && dias[1].fin === '2026-11-20T23:00:00-03:00' && dias[1].recordatorios[0] === 60, dias[1]);
+  t('el id del dia es distinto del de -4 dias y estable', /^sd[0-9a-f]{30}$/.test(dias[1].id) && dias[1].id !== pd.alertas.find(a => a.tipo !== 'dia' && a.fechaPartido === '2026-11-20').id);
+  const sinHora = A.planificar([P('2026-11-20', 'JUJUY BASQUET', 'HINDU (C)', { hora: null })], PERFIL_DIA, AHORA).alertas.find(a => a.tipo === 'dia');
+  t('sin hora publicada el dia del partido avisa a las 09:00', sinHora && sinHora.inicio === '2026-11-20T09:00:00-03:00' && sinHora.recordatorios[0] === 0, sinHora);
+  const yaEmpezo = A.planificar([P('2026-11-01', 'JUJUY BASQUET', 'HINDU (C)', { hora: '11:00' })], PERFIL_DIA, AHORA);
+  t('un partido que ya empezo no se agenda', !yaEmpezo.alertas.some(a => a.tipo === 'dia'));
+
+  // La alerta de -4 dias es HOY a las 09:00 y el cron corre a las 12:00 AR: se corre a 12:05.
+  const hoyDia = A.planificar([P('2026-11-05', 'JUJUY BASQUET', 'HINDU (C)')], PERFIL, AHORA);
+  t('un aviso de hoy cuyo horario paso se corre a dentro de 5 minutos, no se pierde',
+    hoyDia.alertas.length === 1 && hoyDia.alertas[0].inicio === '2026-11-01T12:05:00-03:00' && hoyDia.alertas[0].corrido === true, hoyDia);
+  const evViejo = { atrasado: true, inicio: '2026-10-31T09:00:00-03:00' };
+  t('un aviso de un dia anterior sigue atrasado', A.correrSiTarde(evViejo, AHORA).atrasado === true);
+  const casiMedianoche = Date.parse('2026-11-02T02:58:00Z'); // 23:58 AR
+  t('no se corre si cruzaria la medianoche', A.correrSiTarde({ atrasado: true, inicio: '2026-11-01T07:30:00-03:00' }, casiMedianoche).atrasado === true);
+
+  // TORNEOS_MANUALES_CALENDAR_ID (motorstats.ar) le gana a ALERTAS_CALENDAR_ID
+  cal.limpiarCache();
+  const apiMs = apiCalendar();
+  catV.cargar = async () => ({ catalogo: {} });
+  const rms = await api.manejarCronAlertasPartidos({ headers: { authorization: 'Bearer secreto-largo-1234' } },
+    { env: { CRON_SECRET: 'secreto-largo-1234', ALERTAS_CALENDAR_ID: 'otro@gmail.com', TORNEOS_MANUALES_CALENDAR_ID: 'motor@gmail.com' },
+      kv: kvViejo, fetch: async (u, i) => { if (/oauth2|calendar/.test(u)) return apiMs.fetch(u, i); throw new Error('fuente caida'); },
+      calendario: cal, entorno: ENV, ahora: AHORA });
+  catV.cargar = cargarO;
+  t('las alertas de Jujuy van al calendario de motorstats.ar', rms.body.perfiles[0].calendario === 'motor@gmail.com'
+    && /motor%40gmail\.com/.test(apiMs.llamadas.join('\n')) && !/otro%40gmail/.test(apiMs.llamadas.join('\n')), rms.body);
 
   console.log(mal ? '\nFALLARON ' + mal + ' de ' + (ok + mal) : '\n' + ok + ' tests OK');
   process.exit(mal ? 1 : 0);

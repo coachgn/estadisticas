@@ -92,6 +92,28 @@ function sumarMin(hhmm, min) {
   return p(Math.floor(total / 60) % 24) + ':' + p(total % 60);
 }
 
+/**
+ * UN AVISO TARDE ES MEJOR QUE NINGUNO. Vercel Hobby dispara los crons
+ * dentro de la hora, no al minuto, así que un evento planeado para las
+ * 07:30 puede «ya haber pasado» cuando el cron corre a las 07:50. Si el
+ * aviso es de HOY, se corre a dentro de 5 minutos (el popup sale igual);
+ * si es de un día anterior, queda atrasado como antes.
+ */
+function correrSiTarde(ev, ahoraMs, duracionMin) {
+  const ahora = ahoraMs === undefined ? Date.now() : ahoraMs;
+  if (!ev || !ev.atrasado) return ev;
+  const dia = String(ev.inicio || '').slice(0, 10);
+  const t = ahora + 5 * 60000;
+  if (dia !== hoyAR(ahora) || hoyAR(t) !== dia) return ev;
+  const hhmm = new Date(t - DESFASAJE_AR_MS).toISOString().slice(11, 16);
+  const fin = sumarMin(hhmm, duracionMin || 30);
+  if (fin < hhmm) return ev; // cruzaría la medianoche
+  return Object.assign({}, ev, {
+    inicio: dia + 'T' + hhmm + ':00-03:00', fin: dia + 'T' + fin + ':00-03:00',
+    atrasado: false, corrido: true,
+  });
+}
+
 function claveDelPartido(p) {
   return CORE.claveEquipo(p.local) + '|' + CORE.claveEquipo(p.visitante);
 }
@@ -151,8 +173,38 @@ function planificar(partidos, perfil, ahoraMs) {
       recordatorios: [0],
       privadas: { sgadd: 'alerta-partido', perfil: perfil.id, partido: k },
     };
-    if (t === null || t <= ahora) { atrasadas.push(alerta); return; }
-    alertas.push(alerta);
+    alerta.atrasado = t === null || t <= ahora;
+    const a1 = correrSiTarde(alerta, ahora, perfil.duracionMin);
+    if (a1.atrasado) atrasadas.push(a1); else alertas.push(a1);
+
+    /* EL DÍA DEL PARTIDO también queda en el calendario: a su hora (2 h,
+       popup una hora antes) o, sin hora publicada, a las 09:00. Otro id,
+       con la misma clave sin fecha: una reprogramación lo mueve. */
+    if (perfil.diaDePartido === false) return;
+    const conHora = /^\d{2}:\d{2}$/.test(String(p.hora || ''));
+    const hIni = conHora ? p.hora : perfil.hora;
+    const durDia = conHora ? 120 : perfil.duracionMin;
+    const recDia = conHora ? [60] : [0];
+    const tIni = instanteAR(p.fecha, hIni);
+    const finDia = sumarMin(hIni, durDia);
+    const dia = {
+      clave: k + '|dia',
+      id: 'sd' + idDeEvento(perfil, p).slice(2),
+      partido: alerta.partido, fechaPartido: p.fecha, horaPartido: p.hora || null, diaAlerta: p.fecha,
+      inicio: p.fecha + 'T' + hIni + ':00-03:00',
+      fin: p.fecha + 'T' + (finDia < hIni ? '23:59' : finDia) + ':00-03:00',
+      zona: ZONA,
+      summary: '🏀 Hoy juega ' + perfil.etiqueta + ': ' + p.local + ' vs. ' + p.visitante,
+      description: 'Partido de ' + perfil.etiqueta + ' (' + condicion + ') contra ' + rival
+        + '.\nFecha: ' + p.fecha + horaPartido + (p.sede ? '\nSede: ' + p.sede : '')
+        + '\n\nDía de partido, agendado por MotorStats.',
+      recordatorios: recDia,
+      privadas: { sgadd: 'dia-partido', perfil: perfil.id, partido: k },
+      tipo: 'dia',
+    };
+    /* El evento del partido NO se corre: su hora es la del partido. Se
+       crea mientras el partido no haya empezado. */
+    if (tIni === null || tIni <= ahora) atrasadas.push(dia); else alertas.push(dia);
   });
 
   const porFecha = (a, b) => (a.fechaPartido < b.fechaPartido ? -1 : a.fechaPartido > b.fechaPartido ? 1 : 0);
@@ -177,8 +229,8 @@ async function ejecutar(perfil, partidos, deps) {
     return {
       perfil: perfil.id, calendario: perfil.calendarId, hoy: hoyAR(d.ahora), simulacion: true,
       candidatas: plan.alertas.length,
-      alertas: plan.alertas.map(a => ({ partido: a.partido, fecha: a.fechaPartido, hora: a.horaPartido,
-        avisaEl: a.inicio, id: a.id })),
+      alertas: plan.alertas.map(a => ({ tipo: a.tipo || 'anticipo', partido: a.partido, fecha: a.fechaPartido, hora: a.horaPartido,
+        avisaEl: a.inicio, corrido: !!a.corrido, id: a.id })),
       atrasadas: atrasadasDe(), descartados: plan.descartados, errores: [],
     };
   }
@@ -205,4 +257,4 @@ async function ejecutar(perfil, partidos, deps) {
 }
 
 module.exports = { PERFILES, planificar, ejecutar, hoyAR, restarDias, instanteAR, idDeEvento, sumarMin,
-  claveDelPartido, esDelEquipo, ZONA };
+  claveDelPartido, esDelEquipo, correrSiTarde, ZONA };

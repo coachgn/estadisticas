@@ -95,6 +95,16 @@ t('el mismo cruce no se repite entre zonas', dd.length === 1 && dd[0].partidos.l
 const ent = C.planificarPrevia([{ torneo: 'T', zona: 'a', partidos: [P('2026-11-02', '6&ordm; UNION', 'B')] }], Date.parse('2026-11-02T10:00:00Z'));
 t('decodifica entidades HTML', /6º UNION/.test(ent.evento.description) && !/&ordm;/.test(ent.evento.description), ent.evento.description);
 
+console.log('3 ter. el aviso tarde se corre, no se pierde');
+const A2 = require('./server/lib/alertas-partidos.js');
+const tarde = A2.correrSiTarde(C.planificarControl(grupos, AHORA).evento, AHORA, 30);
+t('el control de hoy ya pasado se corre a dentro de 5 min', tarde.atrasado === false && tarde.corrido === true
+  && tarde.inicio === '2026-11-01T12:05:00-03:00' && tarde.fin === '2026-11-01T12:35:00-03:00', tarde);
+t('la ruta corre el evento salvo con forzar', /correrSiTarde/.test(require('fs').readFileSync('./server/rutas/carga-manual.js', 'utf8')));
+const crons = JSON.parse(require('fs').readFileSync('./server/vercel.json', 'utf8')).crons;
+const hora = f => +crons.find(c => c.path === '/api/cron/carga-manual?flujo=' + f).schedule.split(' ')[1];
+t('los crons corren una hora antes del evento (Hobby dispara dentro de la hora)', hora('previa') <= 14 && hora('control') <= 9, crons);
+
 console.log('4. el cron');
 (async () => {
   const peticion = (q, auth) => ({ headers: auth ? { authorization: 'Bearer ' + auth } : {}, query: q });

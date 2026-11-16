@@ -1,9 +1,9 @@
 /* =====================================================================
    /api/cron/carga-manual?flujo=previa|control · la doble alerta de carga
 
-   Dos crons en vercel.json: la previa a las 12:00 AR (evento 12:30 con
+   Dos crons en vercel.json: la previa a las 11:00 AR (evento 12:30 con
    los partidos de HOY) y el control a las 07:00 AR (evento 07:30 con lo
-   jugado ayer y su checklist). Escribe SOLO en TORNEOS_MANUALES_CALENDAR_ID,
+   jugado ayer y su checklist; cron 06:00 AR). Escribe SOLO en TORNEOS_MANUALES_CALENDAR_ID,
    el calendario de motorstats.ar@gmail.com compartido con la Service
    Account. Se autentica como los otros crons (CRON_SECRET o ADMIN).
    `?simular=1` planifica sin tocar Calendar; `?forzar=1` crea el evento
@@ -76,7 +76,8 @@ async function manejarCronCargaManual(peticion, deps) {
   const base = { flujo: flujo, calendario: calendarId || null, hoy: alertas.hoyAR(d.ahora), fechaRevisada: plan.fecha,
     cantidad: plan.cantidad, torneos: torneos, zonasLeidas: grupos.length, fallaron: fallaron, simulacion: simular };
   if (!plan.evento) return { status: 200, body: Object.assign({ ok: true, evento: null, motivo: 'Sin partidos para ese día.' }, base) };
-  const ev = plan.evento;
+  const ev = forzar ? plan.evento
+    : alertas.correrSiTarde(plan.evento, d.ahora, carga.FLUJOS[flujo].duracionMin);
   if (simular) {
     return { status: 200, body: Object.assign({ ok: true, evento: { summary: ev.summary, inicio: ev.inicio,
       id: ev.id, atrasado: ev.atrasado, descripcion: ev.description } }, base) };

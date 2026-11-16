@@ -101,8 +101,10 @@ async function asegurarEvento(calendarId, evento, deps) {
     description: evento.description || '',
     start: { dateTime: evento.inicio, timeZone: evento.zona },
     end: { dateTime: evento.fin, timeZone: evento.zona },
-    /* SIN useDefault: el aviso tiene que despertar el celular sí o sí, no
-       depender de cómo el usuario configuró su calendario. */
+    /* OJO: los recordatorios de un evento son POR USUARIO. Estos los ve la
+       Service Account, no el dueño del calendario: al dueño le suenan las
+       «notificaciones predeterminadas» de ESE calendario (Configuración →
+       el calendario → Notificaciones de eventos). Sin eso, no hay popup. */
     reminders: { useDefault: false,
       overrides: (evento.recordatorios || [0]).map(m => ({ method: 'popup', minutes: m })) },
     extendedProperties: { private: evento.privadas || {} },

@@ -214,6 +214,9 @@ node test-diagnostico-rival.js # 61 tests · el soporte de decisión del Scoutin
 node test-cortesias.js     #  99 tests · los pases de cortesía: el motor, la lista blanca del guard sobre TODAS las rutas,
                            #             el catálogo y el libro recortados al pase, la barra y el Scouting híbrido (punto 179)
 
+node test-medicion.js      #  24 tests · la medición después del clic: UTM, cuatro eventos, contadores sin datos
+                           #             personales, el embudo de admin y el cableado (punto 180)
+
 node test-backend.js       # 468 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
@@ -342,7 +345,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=386`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=387`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -17303,3 +17306,33 @@ El guard ya dejaba pasar `pbp/<torneo>/<zona>` del equipo propio; el bloqueo era
 2. Push del front (`?v=386`).
 3. El aviso del día −2 corre con el cron de vencimientos (09:00 AR); sin `SMTP_PASS` no sale nada.
 
+---
+
+## 180. LA MEDICIÓN DESPUÉS DEL CLIC · UTM Y CUATRO EVENTOS (2026-11-17)
+
+Assets en `?v=387`. `test-medicion.js` (24) fija todo. Instagram dice quién tocó el enlace; esto dice qué pasó después.
+
+```
+js/sgadd-medicion.js         carga ANTES que sgadd-club.js: lee los UTM, manda los eventos
+server/lib/medicion.js       PURO + KV: limpieza, contadores por día, el embudo
+server/rutas/medicion.js     POST /api/v1/medicion (público) · GET /api/v1/medicion (ADMIN)
+```
+
+- **Los cuatro eventos**, cada uno UNA vez por visita (sessionStorage `sgadd.medicion.enviados`): `landing` y `demo_abierta` salen solos al arrancar (`CLUB.esLanding()` / `CLUB.enDemo()`), `tour_fin` desde `terminar()` de `sgadd-tour.js` y `pedido_demo` desde el envío del modal de `sgadd-demo.js` (la barra de la demo y las cards de planes), después del `window.open`.
+- **Los UTM de la primera página de la visita mandan** (`sgadd.utm`); una visita sin UTM queda «(directo)». `utm_source`, `utm_medium`, `utm_campaign` y `utm_content`. Van en la búsqueda, así que **sobreviven al cambio de dominio** (motorstats.ar). `demo/index.html` ahora pasa la búsqueda a la app: antes el puente los perdía.
+- **Solo contadores, sin datos personales**: un hash por día de Argentina (`sgadd:medicion:AAAA-MM-DD`), un campo por «evento|source|medium|campaign|content», HINCRBY. Ni IP, ni navegador, ni identificador, ni cookies. Con «No rastrear» o Global Privacy Control del navegador no se manda nada.
+- **Vocabulario cerrado y UTM limpios** ([a-z0-9_-], 40 caracteres, sin tildes; hasta 10 eventos por pedido): lo que viaja en la URL lo escribe cualquiera.
+- **sendBeacon con `text/plain`** (un tipo simple: sin preflight de CORS) y fetch `keepalive` de respaldo; `app.js` suma `express.text` para esa ruta y el handler parsea el texto. Sobrevive a que la página se vaya a WhatsApp.
+- **El POST es público** como el login: lo cuida el limitador general. Un token de cortesía no pasa (el guard del punto 179 no lo tiene en la lista blanca y el navegador no lo manda).
+- **La lectura es de ADMIN**: `GET /api/v1/medicion?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` (por defecto, los últimos 30 días; tope 92) devuelve totales, conversión (landing→demo, demo→recorrido, demo→pedido; `null` sin denominador), por día y por pieza (campaña · contenido), ordenado por pedidos.
+- **Etiquetado de las piezas**: `?utm_source=instagram&utm_medium=<formato>&utm_campaign=<serie>&utm_content=<pieza>` en el link de la bio.
+
+### Lo que no hace
+- **No hay pantalla todavía**: el embudo se lee por la API. Una card en el Panel Master es el paso siguiente.
+- No atribuye un pedido de demo a una persona ni sigue a nadie entre visitas: es a propósito.
+- `test-ciclos.js` falla también sin este cambio: depende del paquete local de LAB Norte de la ingesta, que suma partidos nuevos.
+
+### Para producción
+1. Deploy del backend (`cd server && npx vercel --prod`): sin él, el POST da 404 y el panel lo ignora en silencio.
+2. Push del front (`?v=387`).
+3. Cambiar el link de la bio por uno con UTM.

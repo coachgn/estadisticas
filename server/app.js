@@ -63,6 +63,8 @@ function crearApp(opciones) {
   const jsonChico = express.json({ limit: '16kb' }), jsonInforme = express.json({ limit: '4mb' });
   const RUTA_CERRAR = /^\/api\/v1\/ciclos\/[^/]+\/[^/]+\/cerrar$/;
   app.use((req, res, next) => (RUTA_CERRAR.test(req.path) ? jsonInforme : jsonChico)(req, res, next));
+  /* La medición llega por sendBeacon como text/plain (punto 180). */
+  app.use('/api/v1/medicion', express.text({ type: 'text/plain', limit: '4kb' }));
 
   /* EL GUARD DE LOS PASES DE CORTESÍA, antes de TODAS las rutas: un token
      de cortesía solo llega a las de la lista blanca, y con su pase vigente
@@ -178,6 +180,11 @@ function crearApp(opciones) {
      de un pase: el guard la deja pasar y le pone `req.cortesia`). */
   app.post('/api/v1/pase/solicitar', responder(cortesias.manejarPaseSolicitar));
   app.post('/api/v1/pase/actividad', responder(cortesias.manejarPaseActividad));
+  /* La medición después del clic (punto 180): el POST es público y solo
+     suma contadores sin datos personales; leerla es de ADMIN. */
+  const medicion = require('./rutas/medicion.js');
+  app.post('/api/v1/medicion', responder(medicion.manejarMedicion));
+  app.get('/api/v1/medicion', responder(medicion.manejarMedicionLeer));
   app.get('/api/v1/cortesias', responder(cortesias.manejarCortesias));
   app.post('/api/v1/cortesias', responder(cortesias.manejarCortesiasEscribir));
   app.post('/api/v1/clave', responder(h.manejarClave));
