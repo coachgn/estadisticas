@@ -29,3 +29,7 @@ centro-mando/.canva-token.json
 # Equipo de marketing (estrategia privada: el repo es publico)
 .claude/agents/
 .claude/commands/equipo.md
+
+# La clave del feed de la agenda no va al repositorio.
+agenda-script/Config.js
+agenda-script/.clasp.json

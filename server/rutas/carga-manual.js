@@ -98,4 +98,4 @@ async function manejarCronCargaManual(peticion, deps) {
   }
 }
 
-module.exports = { manejarCronCargaManual };
+module.exports = { manejarCronCargaManual, leerGrupos };

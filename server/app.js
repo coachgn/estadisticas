@@ -164,6 +164,7 @@ function crearApp(opciones) {
 
   /* La doble alerta de carga de los torneos manuales (previa y control). */
   app.get('/api/cron/carga-manual', responder(require('./rutas/carga-manual.js').manejarCronCargaManual));
+  app.get('/api/cron/agenda', responder(require('./rutas/agenda.js').manejarAgenda));
 
   /* Lo simulado contra lo que pasó (punto 171): el cron congela la predicción
      de cada partido programado con HSETNX y el admin la lee para la calibración. */
