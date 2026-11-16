@@ -15,6 +15,10 @@
  */
 
 var PREFIJO_TAG = 'msid';
+// Google limita cuántos eventos se pueden crear de golpe: se crea de a pocos,
+// con pausa, y si igual salta el límite se frena y se retoma solo más tarde.
+var MAX_CREADOS_POR_CORRIDA = 25;
+var PAUSA_MS = 1500;
 
 function sincronizar() {
   var url = CONFIG.URL + '?clave=' + encodeURIComponent(CONFIG.CLAVE) + (CONFIG.ORIGEN ? '&origen=' + encodeURIComponent(CONFIG.ORIGEN) : '');
@@ -24,33 +28,65 @@ function sincronizar() {
   }
   var feed = JSON.parse(resp.getContentText());
   var cal = CalendarApp.getDefaultCalendar();
-  var creados = 0, actualizados = 0, iguales = 0;
+  var creados = 0, actualizados = 0, iguales = 0, pendientes = 0, limite = false;
 
   (feed.eventos || []).forEach(function (e) {
+    if (limite) { pendientes++; return; }
     var ini = new Date(e.inicio), fin = new Date(e.fin);
-    // Busca el evento por su id estable dentro de ese día.
     var dia = new Date(ini.getTime()); dia.setHours(0, 0, 0, 0);
     var finDia = new Date(dia.getTime() + 24 * 3600 * 1000);
     var existente = cal.getEvents(dia, finDia).filter(function (x) { return x.getTag(PREFIJO_TAG) === e.id; })[0];
 
-    if (!existente) {
-      // Un evento con tag que ya existe en OTRO día (se reprogramó el partido): se mueve.
+    if (existente) {
+      if (existente.getTitle() !== e.titulo || existente.getDescription() !== e.descripcion) {
+        existente.setTitle(e.titulo);
+        existente.setDescription(e.descripcion);
+        actualizados++;
+      } else {
+        iguales++;
+      }
+      return;
+    }
+    if (creados >= MAX_CREADOS_POR_CORRIDA) { pendientes++; limite = true; return; }
+    try {
       var ev = cal.createEvent(e.titulo, ini, fin, { description: e.descripcion });
       ev.setTag(PREFIJO_TAG, e.id);
       ev.removeAllReminders();
       (e.recordatorios || [0]).forEach(function (m) { ev.addPopupReminder(m); });
       creados++;
-    } else if (existente.getTitle() !== e.titulo || existente.getDescription() !== e.descripcion) {
-      existente.setTitle(e.titulo);
-      existente.setDescription(e.descripcion);
-      actualizados++;
-    } else {
-      iguales++;
+      Utilities.sleep(PAUSA_MS);
+    } catch (err) {
+      // «Has creado o eliminado demasiados calendarios o eventos…»: se frena y se retoma.
+      pendientes++;
+      limite = true;
+      Logger.log('Límite de Google: ' + err.message);
     }
   });
 
-  Logger.log('Agenda: ' + creados + ' creados, ' + actualizados + ' actualizados, ' + iguales + ' sin cambios.' +
-    ((feed.avisos || []).length ? ' Avisos del backend: ' + JSON.stringify(feed.avisos) : ''));
+  Logger.log('Agenda: ' + creados + ' creados, ' + actualizados + ' actualizados, ' + iguales + ' sin cambios, ' +
+    pendientes + ' pendientes.' + ((feed.avisos || []).length ? ' Avisos del backend: ' + JSON.stringify(feed.avisos) : ''));
+
+  limpiarContinuaciones_();
+  if (pendientes > 0) {
+    // Sigue en 15 minutos, una sola vez (los eventos que ya están no se vuelven a crear).
+    ScriptApp.newTrigger('sincronizar').timeBased().after(15 * 60 * 1000).create();
+  }
+}
+
+/** Borra los disparadores de un solo uso que quedaron de una corrida anterior. */
+function limpiarContinuaciones_() {
+  // Sin la lista de los diarios (si no se corrió `instalar` con esta versión) no se borra nada.
+  if (!PropertiesService.getScriptProperties().getProperty('diarios')) return;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'sincronizar' && t.getTriggerSource() === ScriptApp.TriggerSource.CLOCK
+        && t.getEventType() === ScriptApp.EventType.CLOCK && !esDiario_(t)) ScriptApp.deleteTrigger(t);
+  });
+}
+
+/** Los dos disparadores diarios se reconocen porque `instalar` los guarda en una propiedad. */
+function esDiario_(t) {
+  var ids = (PropertiesService.getScriptProperties().getProperty('diarios') || '').split(',');
+  return ids.indexOf(t.getUniqueId()) >= 0;
 }
 
 /** Se corre UNA vez a mano: deja el disparador diario y hace la primera carga. */
@@ -60,7 +96,8 @@ function instalar() {
   });
   // Dos veces por día: de madrugada (avisos y día de partido) y a media mañana
   // (por si el fixture de la liga se actualizó).
-  ScriptApp.newTrigger('sincronizar').timeBased().everyDays(1).atHour(5).inTimezone('America/Argentina/Buenos_Aires').create();
-  ScriptApp.newTrigger('sincronizar').timeBased().everyDays(1).atHour(10).inTimezone('America/Argentina/Buenos_Aires').create();
+  var t1 = ScriptApp.newTrigger('sincronizar').timeBased().everyDays(1).atHour(5).inTimezone('America/Argentina/Buenos_Aires').create();
+  var t2 = ScriptApp.newTrigger('sincronizar').timeBased().everyDays(1).atHour(10).inTimezone('America/Argentina/Buenos_Aires').create();
+  PropertiesService.getScriptProperties().setProperty('diarios', t1.getUniqueId() + ',' + t2.getUniqueId());
   sincronizar();
 }
