@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>MotorStats AR</title>
+<!--
+  LINK CORTO PARA LA BIO DE INSTAGRAM: motorstats.ar/ig
+
+  Es la landing con los UTM ya puestos (punto 180), para no tener que
+  pegar una URL larga en la bio. Si el link trae sus propios parametros
+  (por ejemplo ?utm_content=<pieza>), mandan los del link y los que falten
+  se completan con los de la bio. Va con `replace`, como /demo.
+-->
+<meta name="robots" content="noindex">
+<link rel="canonical" href="../index.html">
+<script>
+  (function () {
+    var q = '';
+    try {
+      var s = new URLSearchParams(location.search);
+      if (!s.get('utm_source')) s.set('utm_source', 'instagram');
+      if (!s.get('utm_medium')) s.set('utm_medium', 'bio');
+      if (!s.get('utm_campaign')) s.set('utm_campaign', 'perfil');
+      q = '?' + s.toString();
+    } catch (e) { q = '?utm_source=instagram&utm_medium=bio&utm_campaign=perfil'; }
+    location.replace('../index.html' + q);
+  })();
+</script>
+<p style="font:14px system-ui;padding:2rem">
+  Abriendo MotorStats… <a href="../index.html">Entrar</a>
+</p>
