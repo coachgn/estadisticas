@@ -102,8 +102,8 @@ t('el control de hoy ya pasado se corre a dentro de 5 min', tarde.atrasado === f
   && tarde.inicio === '2026-11-01T12:05:00-03:00' && tarde.fin === '2026-11-01T12:35:00-03:00', tarde);
 t('la ruta corre el evento salvo con forzar', /correrSiTarde/.test(require('fs').readFileSync('./server/rutas/carga-manual.js', 'utf8')));
 const crons = JSON.parse(require('fs').readFileSync('./server/vercel.json', 'utf8')).crons;
-const hora = f => +crons.find(c => c.path === '/api/cron/carga-manual?flujo=' + f).schedule.split(' ')[1];
-t('los crons corren una hora antes del evento (Hobby dispara dentro de la hora)', hora('previa') <= 14 && hora('control') <= 9, crons);
+t('los crons que escribian en el calendario del servidor se sacaron (la agenda sale por el Apps Script del usuario)',
+  !crons.some(c => /carga-manual|alertas-partidos/.test(c.path)), crons);
 
 console.log('4. el cron');
 (async () => {

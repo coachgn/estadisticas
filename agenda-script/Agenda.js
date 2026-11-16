@@ -17,7 +17,7 @@
 var PREFIJO_TAG = 'msid';
 
 function sincronizar() {
-  var url = CONFIG.URL + '?clave=' + encodeURIComponent(CONFIG.CLAVE);
+  var url = CONFIG.URL + '?clave=' + encodeURIComponent(CONFIG.CLAVE) + (CONFIG.ORIGEN ? '&origen=' + encodeURIComponent(CONFIG.ORIGEN) : '');
   var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
   if (resp.getResponseCode() !== 200) {
     throw new Error('El backend respondió ' + resp.getResponseCode() + ': ' + resp.getContentText().slice(0, 200));

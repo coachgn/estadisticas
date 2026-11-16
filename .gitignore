@@ -33,3 +33,4 @@ centro-mando/.canva-token.json
 # La clave del feed de la agenda no va al repositorio.
 agenda-script/Config.js
 agenda-script/.clasp.json
+agenda-script/pegar-en-motorstats.js

@@ -42,6 +42,11 @@ const partidos = [P('2026-11-20', 'JUJUY BASQUET', 'HINDU (C)'), P('2026-11-25',
     ev.every(e => /^s[gd][0-9a-f]{30}$/.test(e.id) && e.titulo && e.inicio && e.fin && Array.isArray(e.recordatorios)));
   t('los ajenos (que no son de Jujuy) no entran', !ev.some(e => /ATENAS/.test(e.titulo)));
 
+  r = await api.manejarAgenda({ query: { clave: env.AGENDA_KEY, origen: 'carga-manual' } }, { env, kv, ahora: AHORA });
+  t('?origen= filtra: pidiendo solo carga-manual no llega nada de Jujuy', r.status === 200 && r.body.eventos.every(e => e.origen === 'carga-manual'), r.body.eventos);
+  r = await api.manejarAgenda({ query: { clave: env.AGENDA_KEY, origen: 'jujuy' } }, { env, kv, ahora: AHORA });
+  t('?origen=jujuy trae solo Jujuy', r.body.eventos.length === 2 && r.body.eventos.every(e => e.origen === 'jujuy'), r.body.eventos.length);
+
   /* Una lectura caída de Jujuy no tumba la respuesta: se avisa. */
   fixtureApi.refrescar = async () => { throw new Error('sin red'); };
   r = await api.manejarAgenda(q(env.AGENDA_KEY), { env, kv, ahora: AHORA });

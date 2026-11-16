@@ -76,7 +76,11 @@ async function manejarAgenda(peticion, deps) {
     }
   } catch (e) { avisos.push({ perfil: 'carga-manual', mensaje: e.message }); }
 
-  return { status: 200, body: { ok: true, hoy: alertas.hoyAR(d.ahora), cantidad: eventos.length, eventos: eventos, avisos: avisos } };
+  /* ?origen=jujuy o ?origen=carga-manual (o varios, separados por coma):
+     cada cuenta pide solo lo suyo. Sin el parámetro, todo. */
+  const pedido = String(((peticion && peticion.query) || {}).origen || '').split(',').map(x => x.trim()).filter(Boolean);
+  const salida = pedido.length ? eventos.filter(e => pedido.indexOf(e.origen) >= 0) : eventos;
+  return { status: 200, body: { ok: true, hoy: alertas.hoyAR(d.ahora), cantidad: salida.length, eventos: salida, avisos: avisos } };
 }
 
 module.exports = { manejarAgenda };
