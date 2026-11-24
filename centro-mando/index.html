@@ -86,7 +86,8 @@
 </header>
 <main>
   <nav role="tablist" aria-label="Módulos">
-    <button role="tab" data-tab="bandeja" aria-selected="true">📥 Bandeja de la agencia</button>
+    <button role="tab" data-tab="agencia" aria-selected="true">🧭 Agencia · ideas del día</button>
+    <button role="tab" data-tab="bandeja" aria-selected="false">📥 Bandeja de piezas</button>
     <button role="tab" data-tab="explorador" aria-selected="false">🔬 Explorador táctico</button>
     <button role="tab" data-tab="medida" aria-selected="false">🎛 A medida</button>
     <button role="tab" data-tab="aprendizaje" aria-selected="false">📈 Aprendizaje</button>
@@ -97,8 +98,11 @@
     <textarea id="contexto" maxlength="600" placeholder="Ej.: esta semana se habló de la defensa del pick &amp; roll en la final de…"></textarea>
   </details>
 
+  <!-- ============================ AGENCIA ============================ -->
+  <section id="tab-agencia" role="tabpanel"><div id="ag-raiz"><p class="tenue">Cargando la agencia…</p></div></section>
+
   <!-- ============================ BANDEJA ============================ -->
-  <section id="tab-bandeja" role="tabpanel">
+  <section id="tab-bandeja" role="tabpanel" hidden>
     <div class="card">
       <h2>Propuestas de la quincena</h2>
       <p class="tenue" style="margin:0">Se arman con el libro de la zona elegida: las Stories de la fecha y hasta seis piezas repartidas entre ataque, defensa y faltas. Se rearman solas cada 14 días o cuando lo pedís; no hay un proceso corriendo de fondo.</p>
@@ -203,6 +207,7 @@
   </section>
 </main>
 
+<script src="/agencia-ui.js"></script>
 <script>
 'use strict';
 const $ = (id) => document.getElementById(id);
@@ -225,7 +230,7 @@ const donde = () => ({ liga: $('liga').value, zona: $('zona').value });
 const avisos = (lista, clase) => (lista || []).map((a) => '<div class="aviso ' + (clase || '') + '">' + esc(a) + '</div>').join('');
 
 /* ------------------------------ pestañas ------------------------------ */
-let TAB = 'bandeja';
+let TAB = 'agencia';
 function irA(tab) {
   TAB = tab;
   document.querySelectorAll('nav [role=tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
@@ -238,6 +243,7 @@ function cargarTab(forzar) {
   const k = TAB + '|' + $('liga').value + '|' + $('zona').value;
   if (cargado[TAB] === k && !forzar) return;
   cargado[TAB] = k;
+  if (TAB === 'agencia') cargarAgencia();
   if (TAB === 'bandeja') cargarBandeja(false);
   if (TAB === 'explorador') { cargarAnomalias(); correrExplorador(); }
   if (TAB === 'medida') pintarFormatos();

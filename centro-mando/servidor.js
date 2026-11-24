@@ -520,6 +520,7 @@ function app() {
   /* El copy y el prompt alternativo de una propuesta, con el gancho elegido. Sin modelo: los arma el motor. */
   a.post('/api/copy', ruta((req) => { const p = req.body.propuesta || {}, g = req.body.gancho && req.body.gancho.texto; return { copy: p.copy || M.copyPlantilla(p, g), deIa: !!p.copy, prompt: M.promptDeCopy(p, g), placas: M.placasDe(p, g), autochequeo: M.autochequeo(p) }; }));
   a.get('/api/conectores', ruta(() => conectores()));
+  require('./agencia.js').montar(a, ruta);
   a.post('/api/aprobar', ruta((req) => aprobar(req.body)));
   const aprendizaje = () => { const r = leerAprendizaje(); return { registros: r, ponderaciones: M.ponderaciones(r), cola: leerLista(COLA, 'pendientes').filter((c) => c.estado === 'pendiente') }; };
   a.get('/api/aprendizaje', ruta(aprendizaje));
