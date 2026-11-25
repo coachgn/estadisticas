@@ -37,3 +37,6 @@ agenda-script/pegar-en-motorstats.js
 
 # Material de reels: video, PNG y entregables (71 MB). No va al repo.
 reels/
+
+# Documentos de bienvenida y entregables de clientes: no van al repo.
+Claude outputs/

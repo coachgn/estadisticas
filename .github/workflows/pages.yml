@@ -1,0 +1,72 @@
+# Publica en motorstats.ar SOLO el frontend del panel.
+#
+# Antes Pages servía la rama main entera: CLAUDE.md, server/, centro-mando/,
+# los tests y sus fixtures quedaban a una URL de distancia. Este workflow
+# arma `_site/` con una LISTA BLANCA y publica solo eso. Lo que no está en
+# la lista no sale, aunque se agregue al repo mañana.
+#
+# Para que tenga efecto: Settings → Pages → Source: «GitHub Actions».
+# El dominio sale del archivo CNAME (va en la lista).
+#
+# placas-tmp/ va porque centro-mando/canva.js publica ahí los PDF que Canva
+# importa por URL: hace push a main, este workflow corre y Pages los sirve.
+
+name: Publicar el panel
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  armar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Armar _site con la lista blanca
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir _site
+          ARCHIVOS="index.html sgadd.css manifest.json sw.js CNAME LICENSE"
+          CARPETAS="js logos clubes torneos demo icons placas-tmp"
+          for f in $ARCHIVOS; do
+            if [ -f "$f" ]; then cp "$f" _site/; else echo "falta $f"; fi
+          done
+          for d in $CARPETAS; do
+            if [ -d "$d" ]; then cp -R "$d" _site/; fi
+          done
+          # Lo indispensable tiene que estar: sin esto el sitio sale roto.
+          for f in index.html sgadd.css CNAME js/sgadd-core.js; do
+            test -f "_site/$f" || { echo "FALTA $f en _site"; exit 1; }
+          done
+          # Y lo interno NO puede colarse por una carpeta de la lista.
+          if find _site -name 'test-*' -o -name '*.md' -o -name '.env*' | grep -q .; then
+            echo "Hay archivos internos en _site:"; find _site -name 'test-*' -o -name '*.md' -o -name '.env*'; exit 1
+          fi
+          echo "Publicado:"; du -sh _site; ls _site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  publicar:
+    needs: armar
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

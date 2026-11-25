@@ -1,0 +1,39 @@
+MotorStats AR · SGADD (Sistema de Gestión y Análisis de Datos Deportivos)
+Copyright (c) 2026 MotorStats AR. Todos los derechos reservados.
+
+LICENCIA PROPIETARIA · USO NO AUTORIZADO PROHIBIDO
+
+Este repositorio y todo su contenido —código fuente del panel, del servidor,
+de la ingesta, del Centro de Mando y de las automatizaciones; pruebas;
+documentación; metodologías; modelos de análisis; textos; diseños; logotipos
+e imágenes— son obra de MotorStats AR y están protegidos por la Ley 11.723 de
+Propiedad Intelectual de la República Argentina, el Convenio de Berna y los
+tratados internacionales aplicables.
+
+No se concede ninguna licencia, expresa ni implícita. Sin autorización previa
+y por escrito de MotorStats AR queda prohibido:
+
+  1. Copiar, reproducir, descargar para su reutilización, distribuir,
+     publicar, sublicenciar o vender el todo o cualquier parte.
+  2. Modificar, traducir, adaptar o crear obras derivadas, incluido el uso
+     del código, la documentación o sus resultados para entrenar, ajustar o
+     alimentar sistemas de inteligencia artificial.
+  3. Realizar ingeniería inversa, descompilar o extraer la lógica, las
+     fórmulas implementadas, los umbrales o la estructura de datos para
+     construir un producto o servicio que compita con MotorStats AR.
+  4. Extraer de forma automatizada (scraping) el contenido del sitio
+     motorstats.ar o de sus servicios.
+  5. Usar las marcas, nombres o logotipos «MotorStats», «MotorStats AR» o
+     «SGADD» sin permiso.
+
+Que parte de este software se descargue en el navegador para funcionar no
+implica autorización alguna para usarlo con otro fin. El acceso a la
+plataforma por parte de clientes se rige por sus propios términos
+comerciales, que no otorgan derechos sobre el código.
+
+Los escudos y logotipos de clubes y ligas pertenecen a sus respectivos
+titulares y se usan solo con fines de identificación.
+
+EL SOFTWARE SE ENTREGA «TAL CUAL», SIN GARANTÍA DE NINGÚN TIPO.
+
+Consultas y solicitudes de licencia: motorstats.ar@gmail.com

@@ -79,6 +79,10 @@ function firmarToken(datos, opciones) {
      el guard central (`rutas/cortesias.js`) lo valida contra KV en cada
      pedido y le abre solo la lista blanca de rutas. */
   if (d.cortesia) payload.cortesia = String(d.cortesia);
+  /* EL ROL PARA EL NAVEGADOR. La lista de admins ya no se publica, así que
+     el panel sabe que es un administrador por este claim firmado. El
+     servidor NO lo lee: `verificarToken` re-deriva contra la lista. */
+  if (!d.cortesia && AUTH.esAdmin(payload.email)) payload.adm = true;
   return jwt.firmar(payload, secreto(), {
     expiraEn: o.expiraEn || EXPIRA_POR_DEFECTO,
     issuer: 'sgadd',

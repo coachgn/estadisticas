@@ -48,14 +48,29 @@
 const SGADD_AUTH = (function () {
   'use strict';
 
-  /* Los tres mails con acceso total. Es una lista literal a propósito: un
-     patrón (`@motorstats.ar`, por ejemplo) le daría admin a cualquier mail
-     nuevo de ese dominio sin que nadie lo decida. */
-  const ADMINS = [
-    'freytesgn@gmail.com',
-    'francasa09@gmail.com',
-    'motorstats.ar@gmail.com',
-  ];
+  /* LOS MAILS CON ACCESO TOTAL NO VIAJAN AL NAVEGADOR.
+
+     La lista vive en `server/lib/admins-lista.js` y se lee solo en Node
+     (el servidor y los tests). En el navegador queda VACÍA: publicarla le
+     decía a cualquiera a qué mails apuntarle en el login. Ahí el rol sale
+     del claim `adm` del token firmado (`rol()`), y el servidor lo sigue
+     re-derivando contra la lista en cada pedido.
+
+     Se prueban las dos rutas porque este archivo se copia a
+     `server/lib/compartido/` (ver sincronizar-compartido.js). */
+  const ADMINS = (function () {
+    if (typeof require !== 'function' || typeof module === 'undefined') return [];
+    const rutas = ['../admins-lista.js', '../server/lib/admins-lista.js'];
+    for (let i = 0; i < rutas.length; i++) {
+      try { const l = require(rutas[i]); if (Array.isArray(l)) return l.slice(); } catch (e) { /* la otra ruta */ }
+    }
+    return [];
+  })();
+
+  /* Sin la lista (el navegador) se confía en el claim del token. Con la
+     lista (el servidor) NUNCA: ahí manda la lista, para que sacar a
+     alguien surta efecto ya y no cuando venza su token. */
+  function confiaEnClaim() { return ADMINS.length === 0; }
 
   /* MASTER es un plan declarado que HOY no desbloquea nada que PRO no
      tenga: ningun modulo lo distingue en `MODULOS`. Se reconoce para que
@@ -557,6 +572,9 @@ const SGADD_AUTH = (function () {
          que se cobra aparte. */
       plan: normalizarPlan(plan),
       nombre: crudo.nombre ? String(crudo.nombre).trim() : '',
+      /* El claim `adm` del token firmado. Solo lo mira `rol()` en el
+         navegador, donde no está la lista; el servidor lo ignora. */
+      admin: crudo.admin === true,
     };
   }
 
@@ -640,7 +658,8 @@ const SGADD_AUTH = (function () {
   function rol(s) {
     const ses = (s === undefined) ? sesionActual : parsearSesion(s) || s;
     if (!ses || !ses.email) return ROLES.ABIERTO;
-    return esAdmin(ses.email) ? ROLES.ADMIN : ROLES.CLIENTE;
+    if (esAdmin(ses.email)) return ROLES.ADMIN;
+    return (confiaEnClaim() && ses.admin === true) ? ROLES.ADMIN : ROLES.CLIENTE;
   }
 
   /* Un admin y una sesión ausente pasan por todo. Se resuelven juntos
@@ -993,6 +1012,7 @@ const SGADD_AUTH = (function () {
       email: p.email,
       equipoAsignado: p.equipoAsignado,
       plan: p.plan,
+      admin: p.adm === true,
     });
   }
 
@@ -1150,7 +1170,7 @@ const SGADD_AUTH = (function () {
     if (!jwt) return false;
     try {
       const p = leerPayloadDe(jwt);
-      return !!(p && esAdmin(p.email));
+      return !!(p && (esAdmin(p.email) || (confiaEnClaim() && p.adm === true)));
     } catch (e) { return false; }
   }
 

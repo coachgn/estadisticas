@@ -1616,6 +1616,31 @@ titulo('LAS CARDS DE PLANES · lo que promete la landing es lo que el gate conce
     /\.plan-cta \{[\s\S]{0,300}min-height: 44px/.test(idx3));
 }
 
+titulo('LA LISTA DE ADMINS NO VIAJA AL NAVEGADOR');
+{
+  /* La lista vive en server/lib/admins-lista.js. El JS publicado no la
+     trae: le diría a cualquiera a qué mails apuntarle en el login. */
+  ['freytesgn', 'francasa09'].forEach((m) => {
+    check('js/sgadd-auth.js no menciona ' + m, src.indexOf(m) === -1);
+  });
+  const LISTA = require('./server/lib/admins-lista.js');
+  check('en Node se lee la lista del servidor', A.ADMINS.join(',') === LISTA.join(','));
+
+  /* En el navegador no hay `require`: la lista queda vacía y el rol sale
+     del claim firmado `adm`. */
+  const vm = require('vm');
+  const caja = { console: console };
+  vm.createContext(caja);
+  vm.runInContext(src + ';this.AUTH_NAV = SGADD_AUTH;', caja);
+  const N = caja.AUTH_NAV;
+  check('en el navegador la lista está vacía', N.ADMINS.length === 0);
+  check('sin el claim, un mail de admin es CLIENTE', N.rol({ email: LISTA[0] }) === N.ROLES.CLIENTE);
+  check('con el claim del token, es ADMIN', N.rol({ email: LISTA[0], admin: true }) === N.ROLES.ADMIN);
+  /* En el servidor el claim NO alcanza: manda la lista. */
+  check('en el servidor el claim solo no hace admin',
+    A.rol({ email: 'alguien@club.com', admin: true }) === A.ROLES.CLIENTE);
+}
+
 console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
   '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);
