@@ -47,14 +47,19 @@ const SGADD_AUTH = (function () {
      re-derivando contra la lista en cada pedido.
 
      Se prueban las dos rutas porque este archivo se copia a
-     `server/lib/compartido/` (ver sincronizar-compartido.js). */
+     `server/lib/compartido/` (ver sincronizar-compartido.js).
+
+     LOS DOS `require` VAN CON LA RUTA LITERAL, uno por línea. Con la ruta
+     en una variable, el empaquetador de Vercel no ve la dependencia, no
+     sube `admins-lista.js` y en producción la lista queda VACÍA: ningún
+     administrador puede entrar («mail o clave incorrectos»). Pasó el
+     2026-11-25. Lo fija test-permisos.js. */
   const ADMINS = (function () {
     if (typeof require !== 'function' || typeof module === 'undefined') return [];
-    const rutas = ['../admins-lista.js', '../server/lib/admins-lista.js'];
-    for (let i = 0; i < rutas.length; i++) {
-      try { const l = require(rutas[i]); if (Array.isArray(l)) return l.slice(); } catch (e) { /* la otra ruta */ }
-    }
-    return [];
+    let l = null;
+    try { l = require('../admins-lista.js'); } catch (e) { /* la otra ruta */ }
+    if (!Array.isArray(l)) { try { l = require('../server/lib/admins-lista.js'); } catch (e) { /* sin lista */ } }
+    return Array.isArray(l) ? l.slice() : [];
   })();
 
   /* Sin la lista (el navegador) se confía en el claim del token. Con la

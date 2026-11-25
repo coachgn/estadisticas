@@ -1639,6 +1639,19 @@ titulo('LA LISTA DE ADMINS NO VIAJA AL NAVEGADOR');
   /* En el servidor el claim NO alcanza: manda la lista. */
   check('en el servidor el claim solo no hace admin',
     A.rol({ email: 'alguien@club.com', admin: true }) === A.ROLES.CLIENTE);
+
+  /* El empaquetador de Vercel solo sube lo que ve en un require LITERAL.
+     Con la ruta en una variable, producción quedó sin lista y ningún
+     admin pudo entrar (2026-11-25). */
+  const codigo = src.replace(/\/\*[\s\S]*?\*\//g, '');
+  check('admins-lista.js se pide con require literal (el empaquetador lo sube)',
+    /require\('\.\.\/admins-lista\.js'\)/.test(codigo) &&
+    /require\('\.\.\/server\/lib\/admins-lista\.js'\)/.test(codigo));
+  check('ningún require de la lista lleva la ruta en una variable',
+    !/require\(\s*[a-zA-Z_$][\w$]*(\[[^\]]*\])?\s*\)/.test(codigo));
+  const copia = fs.readFileSync('./server/lib/compartido/sgadd-auth.js', 'utf8');
+  check('la copia del servidor trae el require literal',
+    /require\('\.\.\/admins-lista\.js'\)/.test(copia));
 }
 
 console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
