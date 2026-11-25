@@ -526,7 +526,7 @@ const SGADD_AUTH = (function () {
      -------------------------------------------------------------------- */
 
   /* Mayúsculas y espacios nada más. NO se normalizan los puntos ni los
-     alias con `+` de Gmail, aunque `f.reytesgn@gmail.com` sea la misma
+     alias con `+` de Gmail, aunque `nom.bre@gmail.com` y `nombre@gmail.com` sean la misma
      casilla: esto es una LISTA DE PERMITIDOS, y toda normalización de más
      ensancha quién entra. Que un admin tenga que escribir su mail exacto
      es barato; que una variante inesperada caiga adentro, no. */
