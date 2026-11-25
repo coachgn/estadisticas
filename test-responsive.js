@@ -747,5 +747,19 @@ console.log('\n' + '─'.repeat(60));
   ok(/getElementById\('subirArriba'\)\) return null/.test(ui) && /typeof document\.createElement !== 'function'/.test(ui),
     'es idempotente y no revienta con un document de mentira');
 }
+/* v393 · el mapa ORTG/DRTG: los equipos se deslizan entre ventanas y no caen en cascada. */
+{
+  const ini = HTML.indexOf('function drawOrtgDrtgChart(');
+  const fin = HTML.indexOf('const CUADRANTES = {', ini);
+  const f = HTML.slice(ini, fin);
+  ok(/animation: false,/.test(f) && /canvas\.style\.opacity = '0'/.test(f),
+    'el mapa NACE en su lugar (sin la caída desde el borde) y aparece con un fundido');
+  ok(/if \(transicion && mismos\)/.test(f) && /vivo\.update\(\);\s*return;/.test(f),
+    'al cambiar de ventana se actualiza la MISMA instancia: cada equipo se desliza');
+  ok(/chartData\.sort\(/.test(f) && /d\.name === chartData\[i\]\.name/.test(f),
+    'el punto i es siempre el mismo equipo (orden por nombre y verificado)');
+  ok(/Math\.min\(ox\.min, escala\.xMin\)/.test(f) && /ortgMovimientoReducido\(\)/.test(f),
+    'el marco solo se agranda entre ventanas, y con reduced-motion no hay animación');
+}
 if (fallados === 0) console.log('✓ TODO OK · ' + pasados + ' tests');
 else { console.log('✗ ' + fallados + ' FALLARON de ' + (pasados + fallados)); process.exitCode = 1; }

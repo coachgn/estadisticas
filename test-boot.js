@@ -661,14 +661,20 @@ check('un hash raro cae a principal sin tirar',
    filas, y las dos son los números de UN torneo rotulados como si fueran
    los del total. El índice ya tiene los valores consolidados.
    ===================================================================== */
-check('el scatter arma su dataset desde el índice',
-  /function drawOrtgDrtgChart[\s\S]{0,1800}idxG\.lista\(\)\.map/.test(html));
+/* Se busca DENTRO del cuerpo de la función y no por distancia en
+   caracteres: una ventana fija se rompe con cualquier bloque nuevo arriba
+   (la trampa del punto 43; pasó con la animación del mapa en v393). */
+const cuerpoScatter = (() => {
+  const i = html.indexOf('function drawOrtgDrtgChart(');
+  return i < 0 ? '' : html.slice(i, html.indexOf('const CUADRANTES = {', i));
+})();
+check('el scatter arma su dataset desde el índice', /idxG\.lista\(\)\.map/.test(cuerpoScatter));
 /* El respaldo del arranque lee PROMEDIOS E y NO PROMEDIOS 4F: los ratings
    del panel van por 100 POSESIONES (punto 66) y la columna RTNG de 4F
    viene por 100 PLAYS. Con esa, el mapa mostraría una unidad en el primer
    pintado y otra en cuanto entra el índice. */
 check('y deja la hoja SOLO como respaldo del arranque',
-  /function drawOrtgDrtgChart[\s\S]{0,3400}\} else \{[\s\S]{0,900}sheet\('promediosE'\)/.test(html));
+  /\} else \{[\s\S]{0,900}sheet\('promediosE'\)/.test(cuerpoScatter));
 check('el respaldo NO lee los ratings por play de PROMEDIOS 4F',
   !/function drawOrtgDrtgChart[\s\S]{0,3400}sheet\('promedios4f'\)/.test(html));
 check('Mejor Ataque sale del índice',
