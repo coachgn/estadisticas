@@ -17336,3 +17336,16 @@ server/rutas/medicion.js     POST /api/v1/medicion (público) · GET /api/v1/med
 1. Deploy del backend (`cd server && npx vercel --prod`): sin él, el POST da 404 y el panel lo ignora en silencio.
 2. Push del front (`?v=387`).
 3. Cambiar el link de la bio por uno con UTM.
+
+---
+
+## 181. LA AGENCIA, A LA VISTA · rutinas sin sesión, banco de ideas y tablero (2026-11-17)
+
+Las rutinas de marketing corren **solas en Windows**, sin la app de Claude abierta, y la dirección las maneja desde el Centro de Mando. Todo vive en `contenido/` (ignorada por git) salvo `centro-mando/agencia.js` y `agencia-ui.js`.
+
+- **Tareas de Windows**: `MotorStats Agencia Diaria` (08:06), `MotorStats Agencia Semanal` (lunes 09:30) y `MotorStats Centro de Mando` (al iniciar sesión, deja el servidor en `http://127.0.0.1:8770`; acceso directo «Agencia MotorStats» en el escritorio). Se registran con `contenido/vigilancia/automatizacion/programar.ps1 -Registrar`. Si la PC estaba apagada, corren al prenderse. Las tareas equivalentes de la app («Programadas») quedan en pausa.
+- **El ejecutor** (`correr.ps1 -Tipo diaria|semanal`): lee Instagram y sitios con un Chrome propio (`instagram.js`, solo lectura, 11 perfiles y los sitios que cargan por JS), baja las transcripciones de YouTube con **yt-dlp** (`transcripciones.js`, pip --user) y recién ahí llama a `claude -p` con permisos mínimos (lee todo, escribe solo en `contenido/vigilancia/`). La sesión de `claude` en la terminal tiene que estar iniciada (`claude auth login`).
+- **La salida es estructurada**: `agencia/ideas/AAAA-MM-DD.json` con **5 ideas ordenadas de más a menos probable** (probabilidad con su porqué), hallazgos, decisiones sí/no y lo que no pudo ver, más el informe `.md` de lectura rápida.
+- **El banco** (`agencia/banco.json`): cada idea con estado nueva · elegida · en-curso · aprobada · descartada. Lo descartado queda de reserva; la rutina lo lee para no repetir y respeta las notas y criterios de la dirección.
+- **El tablero** (pestaña «Agencia» del Centro de Mando): lo que necesita decisión arriba, las 5 ideas, el trabajo en curso con las puertas P1-P10, lo que encontraron los agentes, el banco y un chat para hablarle a cualquier agente. «Elegir» lanza el circuito de puertas con los agentes `mkt-*` y escribe la ficha; **«Aprobar» solo anota la puerta P11: nada se publica ni se programa desde ahí**.
+- **Instagram/YouTube**: sin login se leen los últimos posteos (texto completo, fecha, me gusta) y los videos (descripción y transcripción automática). Cursos pagos y apps con login no se tocan.

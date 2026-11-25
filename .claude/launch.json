@@ -37,6 +37,15 @@
         "process.env.CENTRO_MANDO_PUERTO='8771';process.env.CENTRO_MANDO_DATOS=require('path').join(require('os').tmpdir(),'centro-mando-prueba');require('./centro-mando/servidor.js').app().listen(8771,'127.0.0.1')"
       ],
       "port": 8771
+    },
+    {
+      "name": "agencia-prueba",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "-e",
+        "process.env.AGENCIA_DATOS=require('path').join(require('os').tmpdir(),'agencia-prueba');process.env.CENTRO_MANDO_DATOS=require('path').join(require('os').tmpdir(),'centro-mando-prueba');require('./centro-mando/servidor.js').app().listen(8772,'127.0.0.1')"
+      ],
+      "port": 8772
     }
   ]
 }
