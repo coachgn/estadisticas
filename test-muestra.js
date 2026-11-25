@@ -201,6 +201,26 @@ check('una ventana sin partidos devuelve el tramo entero y lo dice', A.idxVista(
 A.cambiarMuestra({ tipo: 'todo' });
 check('«todo» vuelve al índice base', A.idxVista() === base);
 
+/* v391 · la ventana de una card (mapa ORTG/DRTG y rankings): los últimos N
+   de cada equipo, sin tocar la muestra de la barra. */
+{
+  check('v391: las ventanas son Temporada, 4, 6 y 10', A.VENTANAS.join() === '0,4,6,10');
+  check('v391: sin ventana no hay índice propio', A.idxUltimos(0) === null);
+  const u4 = A.idxUltimos(4);
+  check('v391: últimos 4 · cada equipo con a lo sumo 4 PJ', u4 && u4.lista().every(e => e.pj <= 4) && u4.lista().some(e => e.pj === 4));
+  check('v391: el índice trae los ratings por posesión', u4.lista().every(e => u4.leer(e.clave, 'RTNG OFF') && typeof u4.leer(e.clave, 'RTNG OFF').valor === 'number'));
+  check('v391: se cachea y no toca la muestra ni el índice base', A.idxUltimos(4) === u4 && A.estado.idx === base && A.idxVista() === base);
+  const u10 = A.idxUltimos(10);
+  check('v391: últimos 10 entra (MAX_ULTIMOS ≥ 10)', u10 && u10.lista().some(e => e.pj === 10));
+  check('v391: el recorte no suma partidos manuales (__muestra)', !!u4.__muestra && u4.__ventana === 4);
+  const sel = A.idxUltimos && ctxSel();
+  function ctxSel() {
+    const html = armarApp().ctx.SGADD_UI.selectorVentana(6, 'f');
+    return /aria-pressed="true"[^>]*>[^<]*<\/button>/.test(html) && /Últimos 6/.test(html) && (html.match(/<button/g) || []).length === 4;
+  }
+  check('v391: el selector marca la ventana activa con sus cuatro opciones', sel);
+}
+
 /* v332 · la línea de base previa del post-partido: los partidos de los días ANTERIORES. */
 {
   const eq0 = base.lista()[0];

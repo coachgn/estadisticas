@@ -38,6 +38,9 @@ const JUGADORES = {
   rankingAbierto: 'produccion',
   /* 'promedio' | 'total' — por partido o el total de la fase. */
   rankingModo: 'promedio',
+  /* La ventana de las dos tablas de ranking (v391): 0 = temporada, o los
+     últimos 4, 6 o 10 partidos de cada equipo. */
+  rankingVentana: 0,
   /* null = usar el umbral de la liga (MIN del JUGADOR TIPO). El DT puede
      bajarlo para ver especialistas de pocos minutos. */
   rankingMinManual: null,
@@ -2288,7 +2291,48 @@ function rankingTexto(col, v, modo) {
   return SGADD.formatear(col, v);
 }
 
-function jugadoresBloqueRankings(idx) {
+/* ---------- La ventana de los rankings (v391) ----------
+
+   Temporada · Últimos 4 · 6 · 10, adentro de la card. El índice de la
+   ventana lo arma `SGADD_APP.idxUltimos` (cada equipo con sus últimos N).
+   El ranking de la LIGA no la ofrece con el log de jugadores recortado
+   del cliente (punto 19): recalculado, la liga quedaría formada solo por
+   su plantel. El del plantel sí: sus jugadores están en el log. */
+function jugadoresVentanaRecortada() {
+  return typeof SGADD_APP !== 'undefined' && SGADD_APP.jugadoresRecortados ? SGADD_APP.jugadoresRecortados() : false;
+}
+
+function jugadoresIdxVentana(idx, deLiga) {
+  const n = JUGADORES.rankingVentana;
+  if (!n || (deLiga && jugadoresVentanaRecortada())) return { idx: idx, n: 0, falta: !!n };
+  const v = (typeof SGADD_APP !== 'undefined' && SGADD_APP.idxUltimos) ? SGADD_APP.idxUltimos(n) : null;
+  /* En el plantel, sin al menos 4 jugadores en la ventana la card se
+     quedaría sin tabla y sin el selector para volver: se queda el tramo. */
+  const plantelOk = deLiga || !v || ((v.liga.jugadoresPorEquipo.get(JUGADORES.filtroEquipo) || []).length >= 4);
+  return (v && plantelOk) ? { idx: v, n: n, falta: false } : { idx: idx, n: 0, falta: true };
+}
+
+function jugadoresCambiarVentana(n) {
+  JUGADORES.rankingVentana = Number(n) || 0;
+  JUGADORES.rankingOrdenPor = null;
+  JUGADORES.plantelRankingOrdenPor = null;
+  jugadoresPintar();
+}
+
+function jugadoresSelectorVentana(vActiva, deLiga, falta) {
+  const recortada = deLiga && jugadoresVentanaRecortada();
+  const motivo = recortada ? 'Con tu plan el registro de partidos trae solo a tu plantel: la liga de los últimos partidos no se puede armar acá' : null;
+  return `<div class="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3">
+      ${SGADD_UI.selectorVentana(vActiva, 'jugadoresCambiarVentana', { deshabilitar: () => motivo })}
+      <span class="text-[11px] text-muted font-mono">${vActiva
+        ? 'Últimos ' + vActiva + ' partidos de cada equipo · promedios y medianas de esa ventana'
+        : 'Todo el tramo de la barra'}${falta && !recortada ? ' · sin partidos para esa ventana: se muestra el tramo' : ''}</span>
+    </div>`;
+}
+
+function jugadoresBloqueRankings(idxBase) {
+  const vent = jugadoresIdxVentana(idxBase, true);
+  const idx = vent.idx;
   /* La cobertura decide si el toggle se puede ofrecer: con el acumulado a
      medio calcular —Jujuy trae 17 filas para 260 jugadores— el botón
      prometería un cambio que no puede hacer. */
@@ -2336,6 +2380,7 @@ function jugadoresBloqueRankings(idx) {
             class="w-24 bg-surface2 border border-hairline rounded-md px-3 py-2 text-xs focus:border-accent outline-none">
         </div>
       </div>
+      ${jugadoresSelectorVentana(vent.n, true, vent.falta)}
       ${SGADD_UI.tabs(tabs, r.id, 'jugadoresVerRanking')}
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${SGADD_UI.esc(r.titulo)}</h4>
       ${jugadoresTablaRanking(idx, r)}
@@ -2388,7 +2433,9 @@ function jugadoresCambiarModoRankingPlantel(modo) {
   jugadoresPintar();
 }
 
-function jugadoresBloqueRankingPlantel(idx) {
+function jugadoresBloqueRankingPlantel(idxBase) {
+  const vent = jugadoresIdxVentana(idxBase, false);
+  const idx = vent.idx;
   const clave = JUGADORES.filtroEquipo;
   if (!clave || !idx || !idx.liga) return '';
   const plantel = (idx.liga.jugadoresPorEquipo.get(clave) || []);
@@ -2456,6 +2503,7 @@ function jugadoresBloqueRankingPlantel(idx) {
             title="Elegir columnas y generar el PDF de este ranking">🖨 PDF</button>
         </div>` : ''}
       </div>
+      ${jugadoresSelectorVentana(vent.n, false, vent.falta)}
       ${SGADD_UI.tabs(tabs, r.id, 'jugadoresVerRankingPlantel')}
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${SGADD_UI.esc(r.titulo)}</h4>
       ${jugadoresTablaRanking(idx, r)}

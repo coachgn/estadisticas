@@ -17349,3 +17349,15 @@ Las rutinas de marketing corren **solas en Windows**, sin la app de Claude abier
 - **El banco** (`agencia/banco.json`): cada idea con estado nueva · elegida · en-curso · aprobada · descartada. Lo descartado queda de reserva; la rutina lo lee para no repetir y respeta las notas y criterios de la dirección.
 - **El tablero** (pestaña «Agencia» del Centro de Mando): lo que necesita decisión arriba, las 5 ideas, el trabajo en curso con las puertas P1-P10, lo que encontraron los agentes, el banco y un chat para hablarle a cualquier agente. «Elegir» lanza el circuito de puertas con los agentes `mkt-*` y escribe la ficha; **«Aprobar» solo anota la puerta P11: nada se publica ni se programa desde ahí**.
 - **Instagram/YouTube**: sin login se leen los últimos posteos (texto completo, fecha, me gusta) y los videos (descripción y transcripción automática). Cursos pagos y apps con login no se tocan.
+
+## 182. LA VENTANA DE UNA CARD · Temporada · Últimos 4 · 6 · 10 (2026-11-25)
+
+Assets en `?v=392`. Un selector ADENTRO de la card que cambia, no en la barra: el mapa ORTG vs DRTG de Principal, Rankings de la liga de Equipos, y Rankings de la liga y Ranking del plantel de Jugadores. Cambiar una card no mueve las demás ni `estado.muestra`.
+
+- `SGADD_APP.idxUltimos(n)`: los últimos N de CADA equipo (`recortarPorCondicion` con `{ tipo: 'ultimos' }`, la familia 2 del punto 139) sobre el tramo de la barra, con el motor del TOTAL. Cacheado por índice base; null sin libro, en modo llave o sin partidos (la card queda en el tramo y lo dice). Lleva `__muestra`: no suma partidos manuales.
+- `SGADD_UI.selectorVentana(actual, onClick, { deshabilitar })`: el control compartido.
+- `MAX_ULTIMOS` pasó de 8 a 10 (y su copia en `compartido/`). La barra sigue ofreciendo 4, 6 y 8.
+- **Mapa**: debajo, «Mejor ofensiva» (ORTG más alto) y «Mejor defensa» (DRTG más bajo) con escudo y el valor por 100 posesiones (`principalLideresOrtg`). Estado en `ORTG_VENTANA`.
+- **Jugadores**: `JUGADORES.rankingVentana`, compartida por las dos tablas. El ranking de la LIGA no ofrece la ventana con `Base Datos J` recortada del cliente (punto 19): la liga quedaría formada por su plantel; el del plantel sí. Un plantel con menos de 4 jugadores en la ventana se queda en el tramo. El toggle de Totales no aparece en una ventana (no hay acumulado).
+- Tests en `test-muestra.js` (v391). Verificado en la demo y a 375 px con Chrome sin ventana (sin desborde, botones de 44 px).
+- **El botón activo NO lleva `text-base`**: en este proyecto es un color, pero Tailwind también lo lee como tamaño de letra (1rem) y le gana a `text-[11px]`. El color va inline.

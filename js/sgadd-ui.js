@@ -318,6 +318,32 @@ const SGADD_UI = (function () {
     return `<div role="tablist" class="flex flex-wrap gap-1 border-b border-hairline pb-2 mb-4">${items}</div>`;
   }
 
+  /* ---------------------------------------------------------------------
+     SELECTOR DE VENTANA DE UNA CARD · Temporada · Últimos 4 · 6 · 10 (v391)
+
+     Va ADENTRO de la card que cambia (el mapa ORTG/DRTG, las tablas de
+     rankings), no en la barra: cada card elige su ventana y las demás no se
+     mueven. `onClick` recibe el número (0 = temporada). Una opción
+     deshabilitada lleva su motivo en el `title`.
+     --------------------------------------------------------------------- */
+  function selectorVentana(actual, onClick, opciones) {
+    const o = opciones || {};
+    const lista = o.ventanas || [0, 4, 6, 10];
+    const btns = lista.map(n => {
+      const activa = Number(actual || 0) === n;
+      const motivo = (n && o.deshabilitar) ? o.deshabilitar(n) : null;
+      const txt = n ? 'Últimos ' + n : 'Temporada';
+      return `<button type="button" onclick="${esc(onClick)}(${n})" aria-pressed="${activa}"
+        ${motivo ? 'disabled title="' + esc(motivo) + '"' : 'title="' + (n ? 'Los últimos ' + n + ' partidos de cada equipo' : 'Todo el tramo de la barra') + '"'}
+        class="px-3 py-2 text-[11px] font-display uppercase tracking-wider transition-colors duration-150
+               focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset
+               disabled:opacity-40 disabled:cursor-not-allowed
+               ${activa ? 'bg-accent' : 'text-muted hover:text-ink hover:bg-surface2'}"${activa ? ' style="color:#0B1121"' : ''}>${txt}</button>`;
+    }).join('');
+    return `<div class="inline-flex flex-wrap rounded-md border border-hairline overflow-hidden" role="group"
+      aria-label="Ventana de partidos" data-selector-ventana>${btns}</div>`;
+  }
+
   function teclaTabs(ev) {
     const k = ev.key;
     if (k !== 'ArrowRight' && k !== 'ArrowLeft' && k !== 'Home' && k !== 'End') return;
@@ -1556,7 +1582,7 @@ const SGADD_UI = (function () {
     }, true);
   }
 
-  return { esc, escJs, statCard, percentileBar, metricTable, textoPropio, fmtDelta, chipDeLectura, chipDeltaHtml, deltasRegular, teamPicker, tabs, aviso, sinDatosTodavia, signoDelta, colorDelta, claseMasMenos,
+  return { esc, escJs, statCard, percentileBar, metricTable, textoPropio, fmtDelta, chipDeLectura, chipDeltaHtml, deltasRegular, teamPicker, tabs, selectorVentana, aviso, sinDatosTodavia, signoDelta, colorDelta, claseMasMenos,
     tonoDePixeles, tonoEscudo, esEscudo, luminancia,
     atributosFila, teclaActiva, teclaTabs, cargando, conservarFoco,
     embeberImagenes, restaurarImagenes, pieInforme, encabezadoInforme, contextoEncabezado, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,

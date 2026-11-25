@@ -769,6 +769,49 @@ const SGADD_APP = (function () {
     return _vista.idx;
   }
 
+  /* =====================================================================
+     LA VENTANA DE UNA CARD (v391) · Temporada · Últimos 4 · 6 · 10
+
+     El selector que va ADENTRO del mapa ORTG/DRTG de Principal y de las
+     tablas de rankings de Equipos y Jugadores. No toca `estado.muestra`
+     (la barra) ni las demás cards: cada card elige su ventana. Es la
+     familia 2 de la muestra (punto 139): los últimos N de CADA equipo, con
+     el otro lado de cada partido como contexto, sobre el tramo abierto.
+     Sin libro, en modo llave o sin partidos devuelve null y la card queda
+     en la temporada.
+     ===================================================================== */
+  const VENTANAS = [0, 4, 6, 10];
+  const _ventanas = { base: null, porN: new Map() };
+
+  function idxUltimos(n) {
+    const base = estado.idx;
+    n = Math.round(Number(n));
+    if (!n || !base || !estado.hojas || enLlave() || typeof SGADD_MUESTRA === 'undefined') return null;
+    if (_ventanas.base !== base) { _ventanas.base = base; _ventanas.porN = new Map(); }
+    if (_ventanas.porN.has(n)) return _ventanas.porN.get(n);
+    let v = null;
+    try {
+      const t = tramoDeIndice();
+      const m = { tipo: 'ultimos', n: n };
+      const rec = SGADD_MUESTRA.recortarPorCondicion(estado.hojas, t, m);
+      if (rec.partidos) {
+        const opc = { fase: t.fase, torneo: SGADD.TORNEO_TOTAL };
+        if (rec.conservar) opc.conservar = rec.conservar;
+        v = SGADD.construirIndice(rec.hojas, opc);
+        if (base.liga && base.liga.nivel && v.liga && !v.liga.nivel) v.liga.nivel = base.liga.nivel;
+        if (!v.lista || !v.lista().length) v = null;
+        else {
+          /* `__muestra` hace que la tabla no sume los partidos manuales,
+             que son de la temporada (punto 139). */
+          v.__muestra = { etiqueta: SGADD_MUESTRA.etiqueta(m), familia: 'equipo', partidos: rec.partidos };
+          v.__ventana = n;
+        }
+      }
+    } catch (e) { v = null; }
+    _ventanas.porN.set(n, v);
+    return v;
+  }
+
   function torneos() {
     return estado.hojas ? SGADD.torneosDisponibles(estado.hojas)
       : [{ id: SGADD.TORNEO_GENERAL, label: 'Todos', unico: true }];
@@ -1398,6 +1441,7 @@ const SGADD_APP = (function () {
     aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, contextoRegular, idxRegular, idxPrevio, idxTemporada, enPostemporada, etiquetaRegular, textoFaseCorta, onCambio, adoptarEquipoDeCategoria,
     recordarCategoria, categoriaRecordada, sufijoCategoria,
     cambiarMuestra, elegirMuestra, irAPartido, textoMuestra, pjEnMuestra, rivalesParaMuestra, varaDelPeriodo, idxVista, infoMuestra, muestraRecordada, barraMuestra,
+    idxUltimos, VENTANAS, jugadoresRecortados,
     get idx() { return estado.idx; },
   };
 })();

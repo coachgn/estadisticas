@@ -276,8 +276,19 @@ const SGADD_RANKINGS = (function () {
     if (typeof equiposPintar === 'function') equiposPintar();
   }
 
-  function render(idx) {
-    if (!idx || !idx.lista().length) return '';
+  /* La ventana de la card (v391): Temporada o los últimos 4, 6 o 10 de cada
+     equipo. Es de ESTA tabla: la grilla, la barra y la ficha no se mueven. */
+  let ventana = 0;
+  function cambiarVentana(n) {
+    ventana = Number(n) || 0;
+    if (typeof equiposPintar === 'function') equiposPintar();
+  }
+
+  function render(idxBase) {
+    if (!idxBase || !idxBase.lista().length) return '';
+    const idxN = (ventana && typeof SGADD_APP !== 'undefined' && SGADD_APP.idxUltimos) ? SGADD_APP.idxUltimos(ventana) : null;
+    const idx = idxN || idxBase;
+    const vActiva = idxN ? ventana : 0;
     const g = GRUPOS.find(x => x.id === abierto) || GRUPOS[0];
     const tabs = GRUPOS.map(x => ({ id: x.id, label: x.titulo }));
 
@@ -288,6 +299,12 @@ const SGADD_RANKINGS = (function () {
           Las mismas tablas de la hoja RANKINGS E, calculadas en vivo desde ${SGADD_UI.esc(idx.liga.n)} equipos.
           Verde = top 25% · Rojo = bottom 25%. Clic en una fila para abrir la ficha.
         </p>
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2 mb-4">
+          ${SGADD_UI.selectorVentana(vActiva, 'SGADD_RANKINGS.cambiarVentana')}
+          <span class="text-[11px] text-muted font-mono">${vActiva
+            ? 'Últimos ' + vActiva + ' partidos de cada equipo · cada uno medido contra la liga en esa ventana'
+            : 'Todo el tramo de la barra'}${ventana && !idxN ? ' · sin partidos para esa ventana: se muestra el tramo' : ''}</span>
+        </div>
         ${SGADD_UI.tabs(tabs, g.id, 'SGADD_RANKINGS.verGrupo')}
         <div class="flex items-baseline justify-between gap-3 flex-wrap mb-2">
           <h4 class="font-display uppercase tracking-wide text-xs text-accent">${SGADD_UI.esc(g.titulo)}</h4>
@@ -304,7 +321,8 @@ const SGADD_RANKINGS = (function () {
     if (typeof equiposPintar === 'function') equiposPintar();
   }
 
-  return { GRUPOS, construir, tabla, render, verGrupo, ordenarPor, resetOrden,
+  return { GRUPOS, construir, tabla, render, verGrupo, ordenarPor, resetOrden, cambiarVentana,
+           get ventana() { return ventana; },
            get abierto() { return abierto; },
            get ordenPor() { return ordenPor; }, get ordenDir() { return ordenDir; } };
 })();
