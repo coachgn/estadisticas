@@ -144,7 +144,7 @@ const sumar = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000
   check('un club pausado no recibe recordatorios de algo que no tiene',
     !por('pausado') && plan.omitidos.some(o => o.clubId === 'pausado' && /sin acceso/.test(o.motivo)));
   check('sin mail en la ficha se OMITE con el motivo, no revienta',
-    !por('sinmail') && plan.omitidos.some(o => o.clubId === 'sinmail' && /no tiene mail/.test(o.motivo)));
+    !por('sinmail') && plan.omitidos.some(o => o.clubId === 'sinmail' && /tienen mail/.test(o.motivo)));
   check('rige la fecha del CLUB cuando la categoría no declara una', por('heredado') && por('heredado').hito === 'recordatorio_3d');
   check('una categoría en PRUEBA también recibe el aviso (tiene acceso)', por('prueba') && por('prueba').hito === 'recordatorio_5d');
   check('el id del reclamo lleva el vencimiento', por('tres').idHito === 'tres|u23|recordatorio_3d@' + sumar(HOY, 3));
@@ -656,6 +656,47 @@ const sumar = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000
   HUB2.H.accionAcceso('cinco', 'reinvitar', 'ana@club.com');
   await new Promise(r => setTimeout(r, 10));
   check('reinvitar desde la lista NO manda nombre (el servidor conserva el que había)', !('nombre' in HUB2.pedido()));
+
+  /* ================================================================ 11 */
+  titulo('11 · LA FICHA SIN MAIL · el aviso va al acceso del club (caso Leandro N. Alem)');
+  const CAT11 = { alem: { nombre: 'Leandro N. Alem', plan: 'PLATA', vence: sumar(HOY, 3),
+    categorias: { oro: { label: 'Primera Oro', plan: 'PLATA', vence: sumar(HOY, 3) } } } };
+  const PAD11 = {
+    'dt@alem.com': { club: 'alem', nombre: 'Tiago', altaEl: '2026-10-20T10:00:00Z', ultimoIngreso: '2026-11-21T11:00:00Z' },
+    'pf@alem.com': { club: 'alem', altaEl: '2026-10-19T10:00:00Z', ultimoIngreso: '2026-11-01T11:00:00Z' },
+    'otro@x.com': { club: 'otro', ultimoIngreso: '2026-11-25T11:00:00Z' },
+  };
+  check('mailDeAcceso: el acceso del club que entró más recientemente', cron.mailDeAcceso(PAD11, 'alem') === 'dt@alem.com');
+  check('mailDeAcceso: sin ingresos, el de alta más vieja',
+    cron.mailDeAcceso({ 'b@a.com': { club: 'alem', altaEl: '2026-10-20' }, 'a@a.com': { club: 'alem', altaEl: '2026-10-19' } }, 'alem') === 'a@a.com');
+  check('mailDeAcceso: un club sin accesos da vacío', cron.mailDeAcceso(PAD11, 'nadie') === '' && cron.mailDeAcceso(null, 'alem') === '');
+  const k11 = kvMemoria();
+  await fichas.guardar('alem', 'oro', { contacto: null, email: null, fechaAlta: '2026-10-19' }, { kv: k11 });
+  const plan11 = cron.planificar(CAT11, await fichas.leerTodas({ kv: k11 }), HOY, AHORA, PAD11);
+  check('la ficha sin mail YA NO se omite: el aviso va al acceso del club',
+    plan11.avisos.length === 1 && plan11.avisos[0].para === 'dt@alem.com' && plan11.avisos[0].paraDe === 'acceso', JSON.stringify(plan11));
+  const t11 = envio.transporteMemoria();
+  const r11 = await cron.ejecutar({ kv: k11, transporte: t11, catalogo: CAT11, padron: PAD11, ahora: AHORA });
+  check('y el cron lo MANDA', r11.enviados === 1 && t11.enviados.length === 1 && t11.enviados[0].para === 'dt@alem.com', r11.enviados);
+  check('saludando al acceso por su nombre, no al contacto de la ficha', /Tiago/.test(t11.enviados[0].html));
+  const f11 = await fichas.leer('alem', 'oro', { kv: k11 });
+  check('el envío queda en el log de la ficha con su destinatario',
+    f11.notificacionesEnviadas.some(n => n.hito === 'recordatorio_3d' && n.para === 'dt@alem.com'));
+  const k11b = kvMemoria();
+  await fichas.guardar('alem', 'oro', { email: 'club@alem.com' }, { kv: k11b });
+  const plan11b = cron.planificar(CAT11, await fichas.leerTodas({ kv: k11b }), HOY, AHORA, PAD11);
+  check('con mail en la ficha manda la ficha, no el acceso', plan11b.avisos[0].para === 'club@alem.com' && plan11b.avisos[0].paraDe === 'ficha');
+  /* La bienvenida desde «Quiénes pueden entrar» deja el mail en la ficha. */
+  const k11c = kvMemoria();
+  await fichas.guardar('alem', 'oro', { email: null, fechaAlta: '2026-10-19' }, { kv: k11c });
+  await cron.enviarBienvenida('alem', 'oro', { kv: k11c, transporte: envio.transporteMemoria(), catalogo: CAT11,
+    forzar: true, para: 'dt@alem.com', ahora: AHORA });
+  check('una bienvenida a un mail con la ficha vacía lo anota como mail de la ficha',
+    (await fichas.leer('alem', 'oro', { kv: k11c })).email === 'dt@alem.com');
+  await cron.enviarBienvenida('alem', 'oro', { kv: k11c, transporte: envio.transporteMemoria(), catalogo: CAT11,
+    forzar: true, para: 'pf@alem.com', ahora: AHORA });
+  check('y una segunda bienvenida a otro acceso NO pisa el mail ya anotado',
+    (await fichas.leer('alem', 'oro', { kv: k11c })).email === 'dt@alem.com');
 
   console.log('\n' + '═'.repeat(70) + '\n' + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);

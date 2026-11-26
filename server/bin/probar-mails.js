@@ -16,6 +16,8 @@
 
    Qué mandaría HOY el cron de verdad, leyendo producción (solo LEE):
      node server/bin/probar-mails.js --tipo cron --real
+   y lo que habría mandado un día dado (para auditar uno que no salió):
+     node server/bin/probar-mails.js --tipo cron --real --hoy 2026-11-20
 
    Opciones: --salida <carpeta> (dónde escribir la vista previa),
              --club / --categoria / --plan / --vence para la vista previa,
@@ -116,14 +118,17 @@ async function simularCron() {
   return r2.enviados === 0 ? 0 : 1;
 }
 
-async function cronReal() {
+async function cronReal(a_hoy) {
   const catalogo = (await require('../lib/catalogo.js').cargarParaEscribir()).catalogo;
   const todas = await fichas.leerTodas();
-  const hoy = cron.hoyAR();
-  const plan = cron.planificar(catalogo, todas, hoy);
+  const hoy = a_hoy || cron.hoyAR();
+  let padron = null;
+  try { padron = await require('../lib/clientes.js').cargar(); } catch (e) { /* sin padrón: solo la ficha */ }
+  const ahora = a_hoy ? Date.parse(a_hoy + 'T15:00:00Z') : undefined;
+  const plan = cron.planificar(catalogo, todas, hoy, ahora, padron);
   console.log('Hoy en Argentina: ' + hoy + ' · SOLO LECTURA: no se manda nada.\n');
   if (!plan.avisos.length) console.log('Hoy el cron no mandaría ningún aviso.');
-  plan.avisos.forEach(a => console.log('  ✉ ' + a.clubId + '/' + a.slug + ' · ' + a.hito + ' → ' + a.para + ' (vence ' + a.vence + ')'));
+  plan.avisos.forEach(a => console.log('  ✉ ' + a.clubId + '/' + a.slug + ' · ' + a.hito + ' → ' + a.para + (a.paraDe === 'acceso' ? ' (acceso del club: la ficha no tiene mail)' : '') + ' (vence ' + a.vence + ')'));
   plan.omitidos.forEach(o => console.log('  · ' + o.clubId + '/' + o.slug + ' omitido: ' + o.motivo));
   console.log('\nFichas con mail: ' + Object.keys(todas).filter(k => todas[k] && todas[k].email).length + ' · envío: '
     + (envio.estadoEnvio().ok ? 'listo' : envio.estadoEnvio().mensaje));
@@ -135,7 +140,7 @@ async function main() {
   const salida = a.salida || path.join(os.tmpdir(), 'motorstats-mails');
 
   if (tipo === 'cron') {
-    if (a.real) return cronReal();
+    if (a.real) return cronReal(typeof a.hoy === 'string' ? a.hoy : null);
     process.exitCode = await simularCron();
     return;
   }

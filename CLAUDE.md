@@ -9489,6 +9489,22 @@ y los mails le dicen al cliente «23:59 hs». Se cambió en `sgadd-auth.js`
 (y su copia) y en la réplica de `sgadd-hub.js`, que `test-permisos` compara:
 `T23:59:59.999-03:00`. El cliente gana tres horas de servicio el último día.
 
+### La ficha sin mail · el aviso va al acceso del club (2026-11-26)
+
+Leandro N. Alem (vencía el 23/11) no recibió los avisos de 5, 3 y 1 día: se
+lo dio de alta desde «Quiénes pueden entrar», la bienvenida salió al mail del
+acceso, pero la ficha quedó con `email: null` y el cron lo descartó con «la
+ficha no tiene mail» (lo mismo con Sud América). Ahora:
+
+- **`planificar(…, padron)`**: sin mail en la ficha, el aviso va al acceso del
+  club (`mailDeAcceso`: el de ingreso más reciente; si nadie entró, el de alta
+  más vieja), saludándolo por su nombre del padrón. Se omite solo si ni la
+  ficha ni los accesos tienen mail. El aviso lleva `paraDe: 'ficha' | 'acceso'`.
+- **La bienvenida a un mail con la ficha vacía lo anota en la ficha**
+  (`enviarBienvenida`); nunca pisa uno que ya está.
+- `probar-mails.js --tipo cron --real --hoy AAAA-MM-DD` dice qué habría salido
+  un día dado: con el arreglo, el 18, 20 y 22/11 salían los tres de Alem.
+
 ### El remitente y la credencial
 
 **Remitente fijo.** `SMTP_USER`, si se pone, tiene que ser

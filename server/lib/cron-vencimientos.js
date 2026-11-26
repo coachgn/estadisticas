@@ -111,7 +111,34 @@ function balance(catalogo, clubId, slug, ficha, padron, hoy, ahora) {
  *   descartados con su motivo en `omitidos`, para que el reporte diga por
  *   qué alguien no recibió nada.
  */
-function planificar(catalogo, todasLasFichas, hoy, ahora) {
+/**
+ * A QUIÉN SE LE AVISA CUANDO LA FICHA NO TIENE MAIL.
+ *
+ * Pasó con Leandro N. Alem (vencía el 23/11): se lo dio de alta desde
+ * «Quiénes pueden entrar», la bienvenida salió al mail del acceso, pero la
+ * ficha quedó con el mail institucional vacío y los tres recordatorios se
+ * descartaron en silencio con «la ficha no tiene mail». El acceso del club
+ * es una persona del cuerpo técnico que ya recibió la bienvenida: se le
+ * avisa a ella. Si hay varios, el que entró al panel más recientemente
+ * (es el que lo usa); si nadie entró, el de alta más vieja. Un mail solo:
+ * los avisos son de UN destinatario, como la bienvenida. PURO.
+ */
+function mailDeAcceso(padron, clubId) {
+  const id = String(clubId || '').toLowerCase();
+  const accesos = Object.keys(padron || {})
+    .filter(e => String((padron[e] || {}).club || '').toLowerCase() === id && /@/.test(e));
+  if (!accesos.length) return '';
+  accesos.sort((a, b) => {
+    const ia = String(padron[a].ultimoIngreso || ''), ib = String(padron[b].ultimoIngreso || '');
+    if (ia !== ib) return ia < ib ? 1 : -1;            // el ingreso más reciente primero
+    const aa = String(padron[a].altaEl || '9'), ab = String(padron[b].altaEl || '9');
+    if (aa !== ab) return aa < ab ? -1 : 1;            // si no, el alta más vieja
+    return a < b ? -1 : 1;
+  });
+  return accesos[0];
+}
+
+function planificar(catalogo, todasLasFichas, hoy, ahora, padron) {
   const avisos = [];
   const omitidos = [];
   Object.keys(catalogo || {}).forEach((clubId) => {
@@ -125,9 +152,11 @@ function planificar(catalogo, todasLasFichas, hoy, ahora) {
       const dias = diasEntre(hoy, d.vence);
       if (P.DIAS_AVISO.indexOf(dias) === -1) return;   // hoy no le toca nada: no es un omitido
       const hito = 'recordatorio_' + dias + 'd';
-      if (!d.para) return omitidos.push(Object.assign(base, { hito: hito, motivo: 'la ficha no tiene mail' }));
+      let para = d.para, paraDe = 'ficha';
+      if (!para) { para = mailDeAcceso(padron, clubId); paraDe = 'acceso'; }
+      if (!para) return omitidos.push(Object.assign(base, { hito: hito, motivo: 'ni la ficha ni los accesos del club tienen mail' }));
       if (fichas.yaEnviado(ficha, hito, d.vence)) return omitidos.push(Object.assign(base, { hito: hito, motivo: 'ya enviado' }));
-      avisos.push(Object.assign(base, { hito: hito, dias: dias, vence: d.vence, para: d.para,
+      avisos.push(Object.assign(base, { hito: hito, dias: dias, vence: d.vence, para: para, paraDe: paraDe,
         idHito: fichas.idHito(clubId, slug, hito, d.vence) }));
     });
   });
@@ -170,11 +199,14 @@ async function ejecutar(deps) {
   if (padron === undefined) {
     try { padron = await require('./clientes.js').cargar(d); } catch (e) { padron = null; }
   }
-  const plan = planificar(catalogo, todas, hoy, ahora);
+  const plan = planificar(catalogo, todas, hoy, ahora, padron);
   const resultados = [];
   for (const aviso of plan.avisos) {
     const ficha = todas[fichas.campoDe(aviso.clubId, aviso.slug)] || {};
     const datos = datosCliente(catalogo, aviso.clubId, aviso.slug, ficha, { ahora: ahora, panelUrl: d.panelUrl });
+    datos.para = aviso.para;
+    /* A un acceso no se lo saluda con el contacto de la ficha: puede ser otra persona. */
+    if (aviso.paraDe === 'acceso') datos.contacto = String(((padron || {})[aviso.para] || {}).nombre || '');
     if (aviso.dias === 5) datos.balance = balance(catalogo, aviso.clubId, aviso.slug, ficha, padron, hoy, ahora);
     resultados.push(await despachar(aviso, () => P.recordatorio(datos, aviso.dias), Object.assign({}, d, { ahora: ahora })));
   }
@@ -226,7 +258,15 @@ async function enviarBienvenida(clubId, slug, deps) {
      reclamado» sin salir — lo cazó un test intermitente (1 de 6 corridas). */
   const idHito = fichas.idHito(clubId, slug, 'bienvenida')
     + (d.forzar ? '#' + Date.now() + '-' + require('crypto').randomBytes(4).toString('hex') : '');
-  return despachar(Object.assign(base, { idHito: idHito }), () => P.bienvenida(datos), d);
+  const r = await despachar(Object.assign(base, { idHito: idHito }), () => P.bienvenida(datos), d);
+  /* Una bienvenida que sale a un mail cuando la ficha NO tiene mail
+     institucional (el alta desde «Quiénes pueden entrar») lo deja anotado
+     en la ficha: es el mail del club que va a recibir los recordatorios de
+     vencimiento, y el Panel Master lo muestra. Nunca pisa uno que ya está. */
+  if (r && r.resultado === 'enviado' && !ficha.email && datos.para) {
+    try { await fichas.guardar(clubId, slug, { email: String(datos.para).trim().toLowerCase() }, d); } catch (e) { /* el mail ya salió */ }
+  }
+  return r;
 }
 
 /**
@@ -276,6 +316,7 @@ async function avisosCortesia(deps) {
 }
 
 module.exports = {
+  mailDeAcceso,
   avisosCortesia,
   DESFASAJE_AR_MS, hoyAR, diasEntre, urlPanel, datosCliente, balance, planificar, despachar, ejecutar, enviarBienvenida,
 };
