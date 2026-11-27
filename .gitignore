@@ -3,7 +3,10 @@
 # El symlink que `npx skills add` crea para Claude Code apunta a una ruta
 # absoluta de esta máquina: se regenera solo con el mismo comando (punto 14).
 # La skill EN SÍ sí va al repo, en .agents/skills/.
-.claude/skills/
+.claude/skills/*
+# Excepcion: las skills propias del bucle de trabajo (no traen nada privado).
+!.claude/skills/bucle/
+!.claude/skills/entregar/
 # Taste trae 37 MB de fotos de referencia: el repo es público y lo sirve
 # Pages. Queda solo local; se reinstala con npx skills add Leonxlnx/taste-skill.
 .agents/skills/design-taste-frontend/
@@ -27,7 +30,12 @@ contenido/
 centro-mando/.canva-token.json
 
 # Equipo de marketing (estrategia privada: el repo es publico)
-.claude/agents/
+.claude/agents/*
+# Excepcion: los cuatro agentes del bucle (tecnicos, sin estrategia ni datos).
+!.claude/agents/explore.md
+!.claude/agents/implementer.md
+!.claude/agents/revisor.md
+!.claude/agents/puntuador.md
 .claude/commands/equipo.md
 
 # La clave del feed de la agenda no va al repositorio.
@@ -40,3 +48,6 @@ reels/
 
 # Documentos de bienvenida y entregables de clientes: no van al repo.
 Claude outputs/
+
+# Estado de las corridas de /bucle (planes, diffs, notas): local, no va al repo.
+.bucle/
