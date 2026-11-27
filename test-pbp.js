@@ -1362,6 +1362,56 @@ function paquete(equipo) {
     }
   }
 
+  /* ===== El mapa del jugador por ventana (2026-11-27): Temporada · Últimos N,
+     Condición, Resultado y Rival, desde partidosPbp con el tirador en cada tiro. */
+  {
+    console.log('\n── El mapa del jugador por ventana y filtros');
+    const tiro = (x, y, c, z, t, r) => [x, y, c, z, t, r === undefined ? 1 : r];
+    const pp = (id, fecha, rival, cond, final, tirosA) => ({
+      id, fecha, rival, condicion: cond, final, ids: ['10', '20'],
+      tiros: { favor: tirosA, contra: [tiro(70, 20, 1, 0, 0)] },
+    });
+    const paqF = {
+      equipo: 'PROPIO', jugadores: { 10: { n: 'GOMEZ, ANA' }, 20: { n: 'PEREZ, LUIS' } },
+      liga: { total: { ppt: 1.0 } },
+      tiros: { detalle: { puntos: { zonas: P.ZONAS, ids: ['10'], favor: [tiro(70, 20, 1, 0, 0)], contra: [] },
+        jugadores: [{ id: '10', pj: 9, i: 1, c: 1, ppt: 2, dist: 1, zonas: [], familias: {}, hex: [] }] } },
+      partidosPbp: [
+        pp('a', '2026-01-01', 'RIVAL A', 'LOCAL', [80, 70], [tiro(70, 20, 1, 0, 0), tiro(70, 20, 0, 0, 1)]),
+        pp('b', '2026-01-08', 'RIVAL B', 'VISITANTE', [60, 70], [tiro(70, 20, 0, 0, 0)]),
+        pp('c', '2026-01-15', 'RIVAL A', 'VISITANTE', [90, 70], [tiro(70, 20, 1, 0, 0), tiro(70, 20, 1, 0, 0)]),
+        pp('z', '2025-12-25', 'RIVAL Z', 'LOCAL', [70, 60], [tiro(70, 20, 1, 0, 1)]),
+        pp('d', '2026-01-22', 'RIVAL C', 'LOCAL', [50, 70], [tiro(70, 20, 0, 0, 1)]),
+      ],
+    };
+    const nPart = f => P.partidosDelFiltro(paqF, f).map(x => x.id).join('');
+    check('Últimos 4: los cuatro más nuevos del equipo', nPart({ n: 4 }) === 'dcba', nPart({ n: 4 }));
+    check('Condición local', nPart({ cond: 'LOCAL' }) === 'daz', nPart({ cond: 'LOCAL' }));
+    check('Resultado ganado / perdido', nPart({ res: 'G' }) === 'caz' && nPart({ res: 'P' }) === 'db');
+    check('Rival (sin mayúsculas ni tildes)', nPart({ rival: 'rival a' }) === 'ca');
+    check('los filtros se combinan y la ventana cuenta después', nPart({ cond: 'VISITANTE', n: 4 }) === 'cb');
+    check('un filtro inválido se ignora', P.filtroJugador({ n: 5, cond: 'X', res: 'E' }).n === 0 && P.filtroJugador({ cond: 'X' }).cond === '');
+    const fp = P.paqFiltrado(paqF, { res: 'G' });
+    const g = fp.tiros.detalle.jugadores.find(j => j.id === '10');
+    check('el detalle se arma solo con esos partidos (GOMEZ: 3/3 en los ganados)', g && g.i === 3 && g.c === 3 && g.pj === 2, g);
+    check('el tirador se reindexa al id del jugador', fp.tiros.detalle.puntos.ids.indexOf('20') >= 0 && fp.tiros.detalle.puntos.favor.every(p => p.length === 6));
+    check('el mismo filtro devuelve el mismo paquete (caché)', P.paqFiltrado(paqF, { res: 'G' }) === fp);
+    const sinFiltro = P.jugadorVista(paqF, 'GOMEZ, ANA', {}, { filtros: true });
+    check('Temporada sin filtros = el mapa de siempre, con la barra arriba', /data-pbp-jfiltros/.test(sinFiltro.html)
+      && !/data-pbp-filtrado/.test(sinFiltro.html) && /Laboratorio/.test(sinFiltro.html));
+    check('la barra trae Temporada, Últimos 4·6·10, Condición, Resultado y Rival',
+      ['data-pbp-jventana="0"', 'data-pbp-jventana="4"', 'data-pbp-jventana="6"', 'data-pbp-jventana="10"', 'data-pbp-jfiltro="cond"', 'data-pbp-jfiltro="res"', 'data-pbp-jfiltro="rival"', '>RIVAL C<']
+        .every(t => sinFiltro.html.indexOf(t) >= 0));
+    const v = P.jugadorVista(paqF, 'GOMEZ, ANA', { n: 4 }, { filtros: true });
+    check('con un filtro se dibuja el paquete filtrado y lo dice', v.paq !== paqF && /últimos 4 partidos/.test(v.html) && /tiró en 3/.test(v.html) && !/undefined|NaN/.test(v.html));
+    check('el botón activo queda marcado', /data-pbp-jventana="4" aria-pressed="true"/.test(v.html) && /data-pbp-jventana="0" aria-pressed="false"/.test(v.html));
+    const nada = P.jugadorVista(paqF, 'GOMEZ, ANA', { rival: 'RIVAL C', res: 'G' }, { filtros: true });
+    check('sin partidos que cumplan lo dice', /Ningún partido cumple el filtro/.test(nada.html));
+    check('sin la opción filtros (Fichajes) no hay barra', !/data-pbp-jfiltros/.test(P.jugadorVista(paqF, 'GOMEZ, ANA', { n: 2 }).html));
+    const viejo = Object.assign({}, paqF, { partidosPbp: paqF.partidosPbp.map(x => Object.assign({}, x, { tiros: { favor: [[70, 20, 1, 0]], contra: [] } })) });
+    check('un paquete sin tirador por tiro no ofrece la barra', !/data-pbp-jfiltros/.test(P.jugadorVista(viejo, 'GOMEZ, ANA', { n: 2 }, { filtros: true }).html));
+  }
+
   console.log('\n' + '═'.repeat(70) + '\n' + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

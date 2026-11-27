@@ -1354,6 +1354,200 @@ const SGADD_PBP = (function () {
     </div>`;
   }
 
+  /* ========================================= EL MAPA DEL JUGADOR POR VENTANA (2026-11-27)
+
+     La card Mapa de tiro del jugador suma un selector: Temporada · Últimos
+     4 · 6 · 10, y Condición (local / visitante), Resultado (ganado /
+     perdido) y Rival. Sale de `partidosPbp`, que trae los tiros de cada
+     partido con su tirador (punto 165) y su condición, rival y marcador.
+     El paquete guarda los últimos 10 partidos con play-by-play del equipo
+     (TOPE_PARTIDOS de la ingesta): cualquier filtro mira esos, y la card lo
+     dice. «Temporada» sin otro filtro es el detalle de toda la temporada.
+     Las ventanas cuentan partidos del EQUIPO; la card dice en cuántos tiró. */
+  const VENTANAS_JUGADOR = [0, 4, 6, 10];
+  const filtrosJugador = new Map();
+  function filtroJugador(f) {
+    const o = f || {};
+    return {
+      n: VENTANAS_JUGADOR.indexOf(Number(o.n)) > 0 ? Number(o.n) : 0,
+      cond: o.cond === 'LOCAL' || o.cond === 'VISITANTE' ? o.cond : '',
+      res: o.res === 'G' || o.res === 'P' ? o.res : '',
+      rival: o.rival ? String(o.rival) : '',
+    };
+  }
+  const filtroJugadorActivo = f => !!(f && (f.n || f.cond || f.res || f.rival));
+  /** Los partidos del paquete con el tirador en cada tiro, del más nuevo al más viejo. */
+  function partidosConTirador(paq) {
+    return ((paq && paq.partidosPbp) || [])
+      .filter(pp => pp && pp.tiros && Array.isArray(pp.tiros.favor) && Array.isArray(pp.ids)
+        && pp.tiros.favor.every(p => Array.isArray(p) && p.length >= 5))
+      .slice().sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
+  }
+  const resultadoDe = pp => (Array.isArray(pp.final) && pp.final.length === 2 && pp.final[0] !== pp.final[1]
+    ? (pp.final[0] > pp.final[1] ? 'G' : 'P') : '');
+  /** Los partidos que deja pasar el filtro. PURA. */
+  function partidosDelFiltro(paq, filtro) {
+    const f = filtroJugador(filtro);
+    let l = partidosConTirador(paq);
+    if (f.cond) l = l.filter(pp => String(pp.condicion || '').toUpperCase() === f.cond);
+    if (f.res) l = l.filter(pp => resultadoDe(pp) === f.res);
+    if (f.rival) l = l.filter(pp => norm(pp.rival) === norm(f.rival));
+    if (f.n) l = l.slice(0, f.n);
+    return l;
+  }
+  const cacheFiltro = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+  /**
+   * El paquete con el detalle de tiros armado SOLO con los partidos del
+   * filtro, con la misma forma que `paq.tiros.detalle` (así el mismo `mapa()`,
+   * la capa de tiros y los mapas por franja lo leen igual). PURA.
+   */
+  function paqFiltrado(paq, filtro) {
+    const f = filtroJugador(filtro);
+    const k = [f.n, f.cond, f.res, f.rival].join('|');
+    const memo = cacheFiltro ? (cacheFiltro.get(paq) || {}) : {};
+    if (memo[k]) return memo[k];
+    const partidos = partidosDelFiltro(paq, f);
+    const det0 = (paq.tiros && paq.tiros.detalle) || {};
+    const orden = (det0.puntos && det0.puntos.zonas) || ZONAS;
+    const ids = [], ix = new Map(), fav = [], con = [], porJ = {}, pj = {};
+    const global = (id) => { if (!ix.has(id)) { ix.set(id, ids.length); ids.push(id); } return ix.get(id); };
+    partidos.forEach((pp) => {
+      const vio = new Set();
+      pp.tiros.favor.forEach((p) => {
+        const id = p[4] >= 0 && pp.ids[p[4]] != null ? String(pp.ids[p[4]]) : null;
+        const g = id === null ? -1 : global(id);
+        const t = [p[0], p[1], p[2], p[3], g, p.length >= 6 ? p[5] : -1];
+        fav.push(t);
+        if (g >= 0) { (porJ[g] || (porJ[g] = [])).push(t); vio.add(id); }
+      });
+      (pp.tiros.contra || []).forEach((p) => { con.push([p[0], p[1], p[2], p[3], -1, p.length >= 6 ? p[5] : -1]); });
+      vio.forEach((id) => { pj[id] = (pj[id] || 0) + 1; });
+    });
+    const ARO = [1.575, 7.5];
+    const jugadores = Object.keys(porJ).map((g) => {
+      const lista = porJ[g], id = ids[Number(g)];
+      const a = agregarPuntos(lista, orden);
+      const c = lista.filter(p => p[2]).length;
+      const pt = lista.reduce((s2, p) => s2 + (p[2] ? valorDeZona(orden[p[3]]) : 0), 0);
+      const dist = lista.map(p => Math.hypot(p[1] / 10 - ARO[0], p[0] / 10 - ARO[1])).sort((x, y) => x - y);
+      return { id: id, pj: pj[id] || 0, i: lista.length, c: c, ppt: Math.round(1000 * pt / lista.length) / 1000,
+        dist: dist.length ? Math.round(10 * dist[Math.floor(dist.length / 2)]) / 10 : null, familias: {}, zonas: a.zonas, hex: a.hex };
+    }).sort((x, y) => y.i - x.i);
+    const out = Object.assign({}, paq, {
+      tiros: Object.assign({}, paq.tiros, {
+        detalle: Object.assign({}, det0, {
+          favor: agregarPuntos(fav, orden), contra: agregarPuntos(con, orden), jugadores: jugadores,
+          puntos: { zonas: orden, ids: ids, favor: fav, contra: con, sinUbicar: 0 },
+        }),
+      }),
+      filtroJugador: { filtro: f, partidos: partidos.length },
+    });
+    memo[k] = out;
+    if (cacheFiltro) cacheFiltro.set(paq, memo);
+    return out;
+  }
+
+  /** La barra de filtros de la card (botones y desplegables; los engancha `activar`). PURA. */
+  function barraFiltroJugador(paq, filtro) {
+    const f = filtroJugador(filtro);
+    const todos = partidosConTirador(paq);
+    if (!todos.length) return '';
+    const boton = (n) => {
+      const act = f.n === n;
+      return `<button type="button" data-pbp-jventana="${n}" aria-pressed="${act}"
+        class="px-3 py-2 text-[11px] font-display uppercase tracking-wider transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset ${act ? 'bg-accent' : 'text-muted hover:text-ink hover:bg-surface2'}"${act ? ' style="color:#0B1121"' : ''}>${n ? 'Últimos ' + n : 'Temporada'}</button>`;
+    };
+    const sel = (campo, rotulo, opciones, valor) => `<label class="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted font-display">${rotulo}
+      <select data-pbp-jfiltro="${campo}" class="bg-surface2 border border-hairline rounded-md px-2 py-1.5 text-xs normal-case tracking-normal text-ink focus:border-accent outline-none">
+        ${opciones.map(o => `<option value="${esc(o[0])}"${o[0] === valor ? ' selected' : ''}>${esc(o[1])}</option>`).join('')}
+      </select></label>`;
+    const rivales = [];
+    todos.forEach((pp) => { if (pp.rival && !rivales.some(r => norm(r) === norm(pp.rival))) rivales.push(pp.rival); });
+    rivales.sort((a, b) => String(a).localeCompare(String(b)));
+    return `<div class="flex flex-wrap items-center gap-2 mb-3 no-imprimir" data-pbp-jfiltros="1">
+      <div class="inline-flex flex-wrap rounded-md border border-hairline overflow-hidden" role="group" aria-label="Ventana de partidos" data-selector-ventana>${VENTANAS_JUGADOR.map(boton).join('')}</div>
+      ${sel('cond', 'Condición', [['', 'Todas'], ['LOCAL', 'Local'], ['VISITANTE', 'Visitante']], f.cond)}
+      ${sel('res', 'Resultado', [['', 'Todos'], ['G', 'Ganado'], ['P', 'Perdido']], f.res)}
+      ${sel('rival', 'Rival', [['', 'Todos']].concat(rivales.map(r => [r, r])), f.rival)}
+    </div>`;
+  }
+  /** El texto del recorte activo. */
+  function rotuloFiltroJugador(f, n) {
+    const p = [];
+    if (f.n) p.push('últimos ' + f.n + ' partidos');
+    if (f.cond) p.push(f.cond === 'LOCAL' ? 'de local' : 'de visitante');
+    if (f.res) p.push(f.res === 'G' ? 'ganados' : 'perdidos');
+    if (f.rival) p.push('contra ' + f.rival);
+    const soloN = f.n && !f.cond && !f.res && !f.rival && n === f.n;
+    return p.join(' · ') + (soloN ? '' : ' · ' + n + ' partido' + (n === 1 ? '' : 's'));
+  }
+
+  /**
+   * La card del jugador con su filtro: el HTML y el paquete con que quedó
+   * dibujada (los conmutadores y la capa de tiros lo usan). PURA.
+   */
+  function jugadorVista(paq, nombre, filtro, opciones) {
+    const o = opciones || {};
+    paq = normalizarReloj(paq);
+    const f = filtroJugador(filtro);
+    const barra = o.filtros && paq ? barraFiltroJugador(paq, f) : '';
+    if (!barra || !filtroJugadorActivo(f)) return { html: barra + jugador(paq, nombre), paq: paq };
+    const fp = paqFiltrado(paq, f);
+    const n = fp.filtroJugador.partidos;
+    const id = Object.keys(paq.jugadores || {}).find(k => norm(paq.jugadores[k].n) === norm(nombre));
+    const det = id ? (fp.tiros.detalle.jugadores || []).find(j => String(j.id) === String(id)) : null;
+    const total = partidosConTirador(paq).length;
+    const nota = `<p class="text-[10px] dato-sec mt-1">Sale de los partidos con play-by-play por partido del paquete (los últimos ${total} del equipo). El reloj de posesión y el perfil por tramo son de la temporada: se ven con «Temporada» y sin filtros.</p>`;
+    if (!n) return { html: barra + `<div class="pbp-bloque" data-pbp-listo="1">${vacio('Ningún partido cumple el filtro (' + esc(rotuloFiltroJugador(f, 0)) + ').')}${nota}</div>`, paq: fp };
+    if (!det) return { html: barra + `<div class="pbp-bloque" data-pbp-listo="1">${vacio('Sin tiros de campo ubicados de ' + esc(nombre) + ' en ' + esc(rotuloFiltroJugador(f, n)) + '.')}${nota}</div>`, paq: fp };
+    const chica = det.i < MIN_TIROS_DIAGNOSTICO;
+    const vara = paq.liga && paq.liga.total ? paq.liga.total.ppt : null;
+    let franjas = '';
+    if (conCodigoReloj(fp)) {
+      franjas = FRANJAS_RELOJ.map((rotulo, k) => {
+        const pf = paqFranja(fp, k);
+        const j = (pf.tiros.detalle.jugadores || []).find(x => x.id === String(id));
+        return `<details class="pbp-detalle pbp-sub mt-2" data-reloj-jugador-mapa="${k}">
+          <summary class="pbp-resumen text-[11px] uppercase tracking-wider text-accent cursor-pointer select-none">Desde dónde tira en ${rotulo} <span class="normal-case tracking-normal dato-sec">· ${j ? j.c + '/' + j.i + ' · ' + num(j.ppt, 2) + ' por tiro' : 'sin tiros'}</span></summary>
+          ${j ? mapa(pf, { sujeto: String(id), franja: k, diag: j.i >= MIN_TIROS_DIAGNOSTICO }) : vacio('Sin tiros en esta franja.')}
+        </details>`;
+      }).join('');
+      franjas = `<div class="mt-3" data-subcard="mapa.reloj-franjas">${subtitulo('Desde dónde tira · por franja del reloj')}${franjas}</div>`;
+    }
+    return {
+      paq: fp,
+      html: barra + `<div class="pbp-bloque" data-pbp-listo="1" data-pbp-filtrado="1">
+        <p class="text-xs text-ink mb-2"><b>${esc(rotuloFiltroJugador(f, n))}</b> · tiró en ${det.pj} · ${det.c}/${det.i} tiros de campo (${num(100 * det.c / det.i)} %) ·
+          <b>${num(det.ppt, 2)}</b> puntos por tiro <span class="dato-sec">(liga ${num(vara, 2)})</span>${det.dist != null ? ' · distancia mediana ' + num(det.dist) + ' m' : ''}</p>
+        <div data-subcard="mapa.zonas">
+        ${chica ? `<div class="rend-raiz"><div class="rend-alerta rend-t-aviso" role="note"><b><span aria-hidden="true">●</span> Muestra chica</b><span>Menos de ${MIN_TIROS_DIAGNOSTICO} tiros de campo: el mapa muestra dónde tiró, sin diagnóstico.</span></div></div>` : ''}
+        ${mapa(fp, { sujeto: String(id), diag: !chica })}
+        </div>
+        ${franjas}${nota}
+      </div>`,
+    };
+  }
+  const basesJugador = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+  const claveFiltroJugador = (nodo) => norm(nodo.getAttribute('data-pbp-equipo')) + '|' + norm(nodo.getAttribute('data-pbp-jugador'));
+  /** Pinta la card del jugador con su filtro guardado (sobrevive a cambiar de pestaña). */
+  function pintarJugador(nodo, base) {
+    if (basesJugador) basesJugador.set(nodo, base);
+    const r = jugadorVista(base, nodo.getAttribute('data-pbp-jugador'), filtrosJugador.get(claveFiltroJugador(nodo)), { filtros: true });
+    nodo.innerHTML = r.html;
+    activar(nodo, r.paq);
+  }
+  /** Un cambio en la barra: guarda el filtro y vuelve a pintar desde el paquete base. */
+  function cambiarFiltroJugador(nodo, cambio) {
+    const base = basesJugador ? basesJugador.get(nodo) : null;
+    if (!base) return;
+    const k = claveFiltroJugador(nodo);
+    filtrosJugador.set(k, filtroJugador(Object.assign({}, filtrosJugador.get(k), cambio)));
+    const campo = Object.keys(cambio || {})[0];
+    pintarJugador(nodo, base);
+    const t = campo === 'n' ? nodo.querySelector('[data-pbp-jventana="' + cambio.n + '"]') : nodo.querySelector('[data-pbp-jfiltro="' + campo + '"]');
+    if (t && t.focus) t.focus();
+  }
+
   /* ========================================= PARTIDO A PARTIDO (PURO)
 
      El informe post-partido (2026-10-08). La ingesta manda `partidosPbp`:
@@ -3541,6 +3735,8 @@ const SGADD_PBP = (function () {
             }
             return;
           }
+          /* El mapa del jugador lleva su barra de filtros (2026-11-27). */
+          if (nombreJugador && !nombreTramos && !nombreQuintetos && !nombreRendimiento) { pintarJugador(nodo, paq); return; }
           nodo.innerHTML = nombreTramos ? relojTramosAdn(paq, nombreTramos)
             : nombreQuintetos ? quintetosJugador(paq, nombreQuintetos)
             : nombreRendimiento ? (typeof SGADD_RENDIMIENTO !== 'undefined' ? SGADD_RENDIMIENTO.html(paq, nombreRendimiento) : '')
@@ -3656,7 +3852,16 @@ const SGADD_PBP = (function () {
     nodo.addEventListener('focusin', encender);
     nodo.addEventListener('focusout', apagar);
 
+    /* La barra de filtros del mapa del jugador (2026-11-27). */
+    nodo.addEventListener('change', (ev) => {
+      const sel = cerca(ev, '[data-pbp-jfiltro]');
+      if (!sel) return;
+      const c = {}; c[sel.getAttribute('data-pbp-jfiltro')] = sel.value;
+      cambiarFiltroJugador(nodo, c);
+    });
     nodo.addEventListener('click', (ev) => {
+      const ven = cerca(ev, '[data-pbp-jventana]');
+      if (ven) { cambiarFiltroJugador(nodo, { n: Number(ven.getAttribute('data-pbp-jventana')) }); return; }
       const acc = cerca(ev, '[data-pbp-accion]');
       if (acc) {
         const caja = cajaDe(acc);
@@ -3739,7 +3944,7 @@ const SGADD_PBP = (function () {
 
   return {
     CAPA, NOMBRES_ZONA, FAMILIAS, ZONAS, GEOMETRIA, MIN_LIGA_HEX,
-    html, mapaCard, jugador, mapa, capaTiros, bloqueSecciones, tieneSecciones, geometriaZonas, zonaGeometrica,
+    html, mapaCard, jugador, jugadorVista, paqFiltrado, partidosDelFiltro, filtroJugador, barraFiltroJugador, VENTANAS_JUGADOR, mapa, capaTiros, bloqueSecciones, tieneSecciones, geometriaZonas, zonaGeometrica,
     rotacionesCard, diagnosticoZonas, diagnosticoJugador, cruceZonas, diagnosticoRival, rivalFriasHtml, espacioRival, fodaPbp, cuartosPatrones, juegoPorCuartoHtml, cuartosCruzadoHtml, espacioCuartos, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
     activa, espacio, espacioJugador, espacioQuintetosJugador, quintetosJugador, onOffDe, avisoSinCapa, espacioRendimiento, espacioConclusiones, montarPendientes, activar, apellido, pedir, _cache: cache,
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
