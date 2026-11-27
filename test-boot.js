@@ -12,6 +12,7 @@
    ===================================================================== */
 const vm = require('vm');
 const fs = require('fs');
+const path = require('path');
 
 let ok = 0, fail = 0;
 const check = (n, c, d) => { if (c) { ok++; console.log('  ✓ ' + n); } else { fail++; console.log('  ✗ ' + n + (d !== undefined ? '  → ' + d : '')); } };
@@ -254,6 +255,20 @@ function crearEntorno({ clubOk, clubExplota, sinClub, sinApp, planillasClub, pla
      y mentiría justo cuando más importa. */
   check('la versión sale de un <script> real y no de una constante',
     /querySelector\('script\[src\*="sgadd-core\.js\?v="\]'\)/.test(srcInit));
+
+  /* La línea «Versión actual de assets» de CLAUDE.md quedó 7 versiones atrás
+     (387 contra 394) sin que nadie lo notara, y es la que cita el diagnóstico
+     de caché del pie. Solo cuentan los `?v=<número>`: los `?v=` de la prosa,
+     del selector y de las regex no llevan dígitos. */
+  const versionesHtml = [...new Set((html.match(/\?v=(\d+)/g) || []).map(s => s.slice(3)))];
+  check('todos los ?v=<número> del index.html son el mismo',
+    versionesHtml.length === 1, versionesHtml.length ? 'hay varios: ' + versionesHtml.join(', ') : 'no hay ningún ?v=<número>');
+  const claudeMd = fs.readFileSync(path.join(__dirname, 'CLAUDE.md'), 'utf8');
+  const mLinea = claudeMd.match(/Versi[oó]n actual de assets: `\?v=(\d+)`/);
+  check('CLAUDE.md dice la misma versión de assets que el index.html',
+    !!mLinea && versionesHtml.length === 1 && mLinea[1] === versionesHtml[0],
+    mLinea ? 'CLAUDE.md dice ?v=' + mLinea[1] + ' e index.html ?v=' + versionesHtml.join(', ') + ': corregir la línea «Versión actual de assets» de CLAUDE.md'
+           : 'no se encontró la línea «Versión actual de assets: `?v=N`» en CLAUDE.md');
 
   const UI = require('./js/sgadd-ui.js');
   const uiSrc = fs.readFileSync('./js/sgadd-ui.js', 'utf8');
