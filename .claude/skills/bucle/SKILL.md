@@ -25,8 +25,14 @@ Nunca escribas secretos, sheetIds ni mails reales en el repo (es público), ni l
    git worktree add "../estadisticas-bucle/<slug>" -b "bucle/<slug>"
    ```
    Si la rama ya existe, frená y preguntá (puede ser trabajo de otra corrida). Guardá la ruta absoluta: `WT`.
-4. Lo ignorado por git NO está en el worktree (`contenido/`, `centro-mando/node_modules`, los `mkt-*`). Un test que
-   dependa de eso puede fallar ahí por ambiente, no por el cambio: por eso se toma la línea de base (paso 2).
+4. Lo ignorado por git NO está en el worktree (`server/.env`, `contenido/`, `centro-mando/node_modules`, los `mkt-*`).
+   Para que la suite sea comparable con `main`:
+   ```bash
+   cp server/.env "<WT>/server/.env"      # secretos locales: ignorado por server/.gitignore, NUNCA se commitea
+   ```
+   Sin esa copia, 12 tests dan rojo con `SIN_SECRETO`. No muestres su contenido. Si el plan toca `centro-mando/`,
+   corré además `cd "<WT>/centro-mando" && npm ci`; si no, `test-centro-mando.js` queda como rojo de ambiente.
+   Lo que igual falle por ambiente lo separa la línea de base (paso 2).
 
 ## 1 · Encontrar el contexto · `Explore` (haiku)
 
@@ -62,6 +68,11 @@ cd "<WT>" && git add -N . && git diff > "<estado>/diff-N.patch" && git status --
 y corré en `WT` los tests del plan + la suite entera (`for f in test-*.js; do node "$f" ...`), salida resumida a `tests-N.txt`.
 Rojo que ya estaba en `tests-0.txt` = ambiente, se anota y no cuenta. Rojo nuevo = cuenta.
 
+**Probar que el test nuevo falla sin el arreglo** (reversiones): siempre sobre una COPIA en el scratchpad
+(`cp -r` de los archivos necesarios y se corre el test ahí). Nunca `git checkout <archivo>`, `git restore` ni `git stash`
+sobre archivos que tocó el implementer: borran o esconden su trabajo. Después de cualquier prueba, `git -C "<WT>" diff`
+tiene que dar idéntico a `diff-N.patch` (`cmp`).
+
 ## 4 · Revisar · `revisor` (opus)
 
 Lanzá `revisor` con el plan, la ruta `WT`, la ruta de `diff-N.patch` y `tests-N.txt`. Que revise con
@@ -90,8 +101,12 @@ Vos auditás también: si la nota dice TERMINADO pero el diff toca algo fuera de
    ```bash
    cd "<WT>" && git add -A && git commit -m "tipo: descripción en imperativo" -m "Bucle <fecha>-<slug>: N vuelta(s), nota X/10." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
    ```
-   Formato de mensaje del punto 11 (`feat`, `fix`, `refactor`, `test`, `docs`, `style`, `chore`). Revisá antes que no
-   entren `*-extraido.js` ni nada ignorado.
+   Formato de mensaje del punto 11 (`feat`, `fix`, `refactor`, `test`, `docs`, `style`, `chore`). Antes del commit:
+   - que no entren `*-extraido.js`, `server/.env` ni nada ignorado (`git status --short` y agregar por nombre si dudás);
+   - la suite regenera `MANUAL_ETIQUETADO_SGADD.html`: si el plan no lo pedía y su diff es solo de finales de línea
+     (`git diff --ignore-cr-at-eol --quiet -- MANUAL_ETIQUETADO_SGADD.html` da 0), restauralo con
+     `git -C "<WT>" checkout -- MANUAL_ETIQUETADO_SGADD.html`. Si cambió contenido de verdad, es un hallazgo: frená y avisá.
+   - al borrar el worktree (`git worktree remove`) la copia de `server/.env` se va con él.
 2. `informe.md`: tarea, vueltas con su nota, archivos tocados, tests (con los rojos de ambiente aparte), lo que quedó
    fuera, y la rama `bucle/<slug>`.
 3. Al usuario, corto: qué se hizo, nota final, rama, y lo que espera su OK:
