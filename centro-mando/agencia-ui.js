@@ -4,7 +4,7 @@
    página. Todo lo que muestra sale de /api/agencia; las acciones van a
    /api/agencia/*. Nada se publica desde acá.
    ===================================================================== */
-const AG = { est: null, abiertas: new Set(), pleg: new Set(), vista: 'hoy', verTodas: false, verDec: false, desdeElegido: {}, filtro: 'todos', temporizador: null, dlg: null };
+const AG = { est: null, abiertas: new Set(), pleg: new Set(), vista: 'hoy', verTodas: false, verDec: false, enVuelo: new Set(), desdeElegido: {}, filtro: 'todos', temporizador: null, dlg: null };
 
 (function estilos() {
   const s = document.createElement('style');
@@ -37,7 +37,7 @@ const AG = { est: null, abiertas: new Set(), pleg: new Set(), vista: 'hoy', verT
   .ag-kpi[aria-pressed=true] { outline:2px solid var(--cel); }
   .ag-grilla { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; align-items:start; }
   @media (min-width: 1000px) { .ag-grilla { grid-template-columns:2fr 1fr; } }
-  .ag-lado, .ag-abajo { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; min-width:0; } #ag-raiz label, #ag-raiz textarea, #ag-raiz select { min-width:0; max-width:100%; } #ag-raiz .grilla > * { min-width:0; } .ag-abajo { margin-top:14px; }
+  .ag-princ, .ag-lado, .ag-abajo { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; min-width:0; } #ag-raiz label, #ag-raiz textarea, #ag-raiz select { min-width:0; max-width:100%; } #ag-raiz .grilla > * { min-width:0; } .ag-abajo { margin-top:14px; }
   .ag-card { min-width:0; } .ag-card h3 { margin:0 0 8px; font-size:15px; letter-spacing:.5px; }
   .ag-chips { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 8px; }
   .ag-chips button { min-height:40px; padding:2px 10px; font-size:13px; font-weight:500; border-radius:20px; }
@@ -47,6 +47,9 @@ const AG = { est: null, abiertas: new Set(), pleg: new Set(), vista: 'hoy', verT
   .ag-tog { flex:1 1 0; min-width:0; overflow:hidden; display:flex; align-items:center; gap:8px; text-align:left; background:transparent; border:0; padding:4px 2px; min-height:40px; font-weight:500; }
   .ag-tog:focus-visible, .ag-kpi:focus-visible, .ag-chips button:focus-visible { outline:2px solid var(--cel); outline-offset:2px; }
   .ag-tit { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1 1 0; display:block; }
+  .ag-lin-dec, .ag-lin-dec .ag-tog { align-items:flex-start; } .ag-lin-dec .ag-tog { overflow:visible; } .ag-lin-dec .chip { align-self:flex-start; }
+  .ag-btns button[aria-disabled=true] { opacity:.5; cursor:progress; }
+  .ag-tit-dec { white-space:normal; overflow-wrap:anywhere; line-height:1.4; text-align:left; min-width:0; flex:1 1 0; display:block; max-width:80ch; padding:2px 0; }
   .ag-mini { width:48px; height:6px; border-radius:6px; background:#06101f; overflow:hidden; flex:none; } .ag-mini i { display:block; height:100%; }
   .ag-prin { flex:none; display:flex; gap:6px; } .ag-prin a.btn { justify-content:center; } .ag-prin button, .ag-prin a.btn { min-height:40px; padding:4px 12px; font-size:13px; margin:0; }
   .ag-desp { padding:2px 4px 10px 22px; } .ag-tog .chip { margin:0; flex:none; }
@@ -187,18 +190,18 @@ function panelIdeas(e) {
     (lista.length > vis.length ? '<button class="ag-chico" data-ag="vermas" style="margin-top:8px">Ver ' + (lista.length - vis.length) + ' más</button>' : '') + '</div>';
 }
 
-/* UNA fila por decisión: chip + título con ellipsis. La recomendación y los botones Sí / No / Después viven al desplegar:
-   con 23 decisiones, mostrar todo junto era una cascada y el título quedaba cortado a diez letras por los botones. */
+/* UNA fila por decisión: chip + pregunta COMPLETA (multilínea, sin ellipsis) en la columna principal. La recomendación y los
+   botones Sí / No / Después viven al desplegar: con 23 decisiones, mostrar todo junto era una cascada. */
 const AG_TOPE_DEC = 5;
 function panelDecisiones(e) {
   const vis = AG.verDec ? e.decisiones : e.decisiones.slice(0, AG_TOPE_DEC);
   const fila = (d) => {
-    const clave = 'd' + d.id, ab = AG.abiertas.has(clave), idd = esc(d.id);
-    return '<div class="ag-fila1"><div class="ag-lin"><button class="ag-tog" data-ag="tog" data-id="' + esc(clave) + '" aria-expanded="' + ab + '" aria-controls="ag-desp-' + esc(clave) + '" title="' + esc(d.texto) + '"><span class="chip">' + esc(d.tipo) + '</span><span class="ag-tit">' + esc(d.texto) + '</span></button></div>' +
+    const clave = 'd' + d.id, ab = AG.abiertas.has(clave), idd = esc(d.id), dis = AG.enVuelo.has(d.id) ? ' aria-disabled="true"' : '';
+    return '<div class="ag-fila1"' + (dis ? ' aria-busy="true"' : '') + '><div class="ag-lin ag-lin-dec"><button class="ag-tog" data-ag="tog" data-id="' + esc(clave) + '" aria-expanded="' + ab + '" aria-controls="ag-desp-' + esc(clave) + '"><span class="chip">' + esc(d.tipo) + '</span><span class="ag-tit-dec">' + esc(d.texto) + '</span></button></div>' +
       (ab ? '<div class="ag-desp" id="ag-desp-' + esc(clave) + '">' + (d.recomendacion ? '<div class="tenue">Recomendación de los agentes: ' + esc(d.recomendacion) + '</div>' : '') +
-        '<div class="ag-btns"><button class="pri" data-ag="decidir" data-id="' + idd + '" data-r="si">Sí</button><button data-ag="decidir" data-id="' + idd + '" data-r="no">No</button><button data-ag="decidir" data-id="' + idd + '" data-r="despues">Después</button></div></div>' : '') + '</div>';
+        '<div class="ag-btns"><button class="pri" data-ag="decidir" data-id="' + idd + '" data-r="si"' + dis + '>Sí</button><button data-ag="decidir" data-id="' + idd + '" data-r="no"' + dis + '>No</button><button data-ag="decidir" data-id="' + idd + '" data-r="despues"' + dis + '>Después</button></div></div>' : '') + '</div>';
   };
-  return '<div class="card ag-card ag-decide" id="ag-decisiones"><h3>Decisiones para vos <span class="chip">' + e.decisiones.length + '</span></h3>' +
+  return '<div class="card ag-card ag-decide" id="ag-decisiones"><h3 id="ag-dec-tit" tabindex="-1">Decisiones para vos <span class="chip">' + e.decisiones.length + '</span></h3>' +
     (vis.length ? vis.map(fila).join('') : '<p class="tenue">No hay decisiones pendientes.</p>') +
     (e.decisiones.length > vis.length ? '<button class="ag-chico" data-ag="vermasdec" style="margin-top:8px">Ver ' + (e.decisiones.length - vis.length) + ' más</button>' : '') + '</div>';
 }
@@ -287,7 +290,7 @@ function pintarAgencia(foco) {
     '<button class="ag-chico" data-ag="recargar">↻ Recargar</button><button class="pri ag-chico" data-ag="correr" title="Corre la rutina completa ahora (tarda unos 15 a 25 minutos). Sola corre todos los días a las 8:06.">▶ Correr la rutina</button></div>' +
     '<div class="ag-kpis">' + kpiAg('hoy', 'Ideas por elegir', nd.ideas, '', AG.vista === 'hoy') + kpiAg('decisiones', 'Decisiones', nd.decisiones, '', false) +
       kpiAg('curso', 'En trabajo', e.enCurso.length, frenan ? frenan + (frenan === 1 ? ' frena en una puerta' : ' frenan en una puerta') : '', AG.vista === 'curso') + kpiAg('p11', 'Por aprobar (P11)', nd.p11, '', false) + '</div>' +
-    '<div class="ag-grilla">' + panelIdeas(e) + '<div class="ag-lado">' + panelDecisiones(e) + panelTrabajos(e) + panelHallazgos(e) + '</div></div>' +
+    '<div class="ag-grilla"><div class="ag-princ">' + panelIdeas(e) + panelDecisiones(e) + '</div><div class="ag-lado">' + panelTrabajos(e) + panelHallazgos(e) + '</div></div>' +
     '<div class="ag-abajo">' + plegables(e) + '</div>';
   $('ag-raiz').innerHTML = h;
   restaurarForm(guardado);
@@ -327,7 +330,7 @@ document.addEventListener('click', async (ev) => {
     if (a === 'recargar') return cargarAgencia();
     if (a === 'producir') { try { AG.est = await api('/api/agencia/producir', { id }); } catch (err) { alert(err.message); } return pintarAgencia(); }
     if (a === 'correr') { if (!confirm('Corre la rutina completa ahora: lee Instagram, YouTube y los sitios, y arma 5 ideas nuevas. Tarda entre 15 y 25 minutos. ¿Seguimos?')) return; try { await api('/api/agencia/correr', {}); } catch (err) { if (!/ya corri/.test(err.message)) { alert(err.message); return; } if (!confirm(err.message)) return; try { await api('/api/agencia/correr', { forzar: true }); } catch (e2) { alert(e2.message); return; } } return cargarAgencia(); }
-    if (a === 'puertas') { const sel = document.querySelector('[data-ag-desde="' + id + '"]'); const desde = sel ? sel.value : 'P1'; delete AG.desdeElegido[id]; try { await api('/api/agencia/puertas', { id, desde }); } catch (err) { alert(err.message); } return cargarAgencia(); }
+    if (a === 'puertas') { const sel = document.querySelector('[data-ag-desde="' + id + '"]'); const desde = sel ? sel.value : 'P1'; try { await api('/api/agencia/puertas', { id, desde }); delete AG.desdeElegido[id]; } catch (err) { alert(err.message); } return cargarAgencia(); }
     if (a === 'descartar') { const m = prompt('¿Por qué la descartás? (opcional, queda anotado en el banco)', ''); if (m === null) return; AG.est = await api('/api/agencia/accion', { id, accion: 'descartar', texto: m }); return pintarAgencia(); }
     if (a === 'restaurar' || a === 'devolver') { AG.est = await api('/api/agencia/accion', { id, accion: a }); return pintarAgencia(); }
     if (a === 'aprobar') { if (!confirm('Vas a aprobar esta pieza (puerta P11). Eso NO la publica ni la programa: solo deja constancia de tu aprobación. ¿Aprobar?')) return; AG.est = await api('/api/agencia/accion', { id, accion: 'aprobar' }); return pintarAgencia(); }
@@ -342,7 +345,26 @@ document.addEventListener('click', async (ev) => {
       if (b.dataset.v === 'decisiones') { const d = $('ag-decisiones'); if (d) d.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
       AG.vista = b.dataset.v === 'p11' ? 'curso' : b.dataset.v; AG.verTodas = false; return pintarAgencia('[data-ag="kpi"][data-v="' + b.dataset.v + '"]');
     }
-    if (a === 'decidir') { AG.abiertas.delete('d' + id); AG.est = await api('/api/agencia/decision', { id, respuesta: b.dataset.r }); return pintarAgencia(); }
+    if (a === 'decidir') {
+      /* La fila se cierra SOLO si la API respondió: si falla, sigue abierta con sus botones y el foco vuelve al apretado.
+         Mientras la llamada está en vuelo los botones salen aria-disabled (NO disabled: un botón disabled pierde el foco y cae en body)
+         y un segundo clic se ignora por el guard: dos respuestas distintas a la misma decisión no pueden salir. */
+      if (AG.enVuelo.has(id)) return;
+      const selBtn = '[data-ag="decidir"][data-id="' + escCss(id) + '"][data-r="' + escCss(b.dataset.r) + '"]';
+      try {
+        AG.enVuelo.add(id); pintarAgencia(selBtn);
+        const antes = AG.est.decisiones.findIndex((d) => d.id === id);
+        try { AG.est = await api('/api/agencia/decision', { id, respuesta: b.dataset.r }); } catch (err) {
+          AG.enVuelo.delete(id); AG.abiertas.add('d' + id); // la fila reabre aunque el usuario la haya cerrado durante la espera
+          pintarAgencia(selBtn); alert(err.message);
+          return;
+        }
+        AG.enVuelo.delete(id); AG.abiertas.delete('d' + id);
+        /* El botón apretado desaparece: el foco va al toggle de la decisión que quedó en ese lugar o, si no hay, al título. */
+        const sig = antes >= 0 ? AG.est.decisiones[antes] : null, visible = sig && (AG.verDec || antes < AG_TOPE_DEC);
+        return pintarAgencia(visible ? '[data-ag="tog"][data-id="' + escCss('d' + sig.id) + '"]' : '#ag-dec-tit');
+      } finally { AG.enVuelo.delete(id); }
+    }
     if (a === 'aplicar') { AG.est = await api('/api/agencia/aplicar', { idea: id, indice: b.dataset.k }); return pintarAgencia(); }
     if (a === 'enviar') { const t = $('ag-texto').value.trim(); if (!t) return alert('Escribí qué querés pedirle al agente.'); await api('/api/agencia/agente', { agente: $('ag-agente').value, idea: $('ag-sobre').value || null, texto: t }); $('ag-texto').value = ''; return cargarAgencia(); }
     if (a === 'instruccion') { const t = $('ag-texto').value.trim(); if (!t) return alert('Escribí el criterio.'); AG.est = await api('/api/agencia/instruccion', { texto: t }); $('ag-texto').value = ''; return pintarAgencia(); }

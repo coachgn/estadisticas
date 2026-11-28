@@ -1514,7 +1514,7 @@ titulo('Los agentes con Claude · la guarda numérica');
       qsFalla = true; let corto = false; try { sA.sA_pintar(); } catch (_) { corto = true; } qsFalla = false; docA.activeElement = null;
       check('agencia-ui.js · un error al devolver el foco no corta el repintado (el polling sigue)', corto === false);
       sA.sA_AG.est.decisiones = [{ id: 'dz', tipo: 't', texto: 'T', recomendacion: 'R' }]; sA.sA_AG.abiertas.add('ddz');
-      check('agencia-ui.js · al decidir se borra la clave d<id> de las filas abiertas (fuente)', /AG\.abiertas\.delete\('d' \+ id\)/.test(srcAg) && /CSS\.escape/.test(srcAg) && /try \{[^]*document\.querySelector\(aFoco\)/.test(srcAg));
+      check('agencia-ui.js · el repintado escapa el selector del foco y lo protege con try; decidir usa escCss, no CSS.escape directo (fuente)', /escCss\('d' \+ sig\.id\)/.test(srcAg) && !/CSS\.escape\(id\)/.test(srcAg) && /try \{[^]*document\.querySelector\(aFoco\)/.test(srcAg));
       sA.sA_AG.est.decisiones = []; sA.sA_AG.abiertas.delete('ddz');
       docA.activeElement = null;
       sA.sA_AG.abiertas.add('i1'); sA.sA_pintar();
@@ -1524,9 +1524,64 @@ titulo('Los agentes con Claude · la guarda numérica');
       sA.sA_AG.est.decisiones = Array.from({ length: 23 }, (_, k) => ({ id: 'dc' + k, tipo: 'criterio', texto: 'Decisión ' + k, recomendacion: 'RECO' + k }));
       sA.sA_pintar();
       const filasDec = (raizA.h.match(/data-ag="tog" data-id="ddc\d+"/g) || []);
-      check('agencia-ui.js · 23 decisiones: 5 filas, «Ver 18 más», sin recomendación ni botones Sí/No/Después hasta desplegar', filasDec.length === 5 && /Ver 18 más/.test(raizA.h) && !/RECO0/.test(raizA.h) && !/data-ag="decidir"/.test(raizA.h) && /title="Decisión 0"/.test(raizA.h));
+      check('agencia-ui.js · 23 decisiones: 5 filas, «Ver 18 más», sin recomendación ni botones Sí/No/Después hasta desplegar', filasDec.length === 5 && /Ver 18 más/.test(raizA.h) && !/RECO0/.test(raizA.h) && !/data-ag="decidir"/.test(raizA.h) && /<span class="ag-tit-dec">Decisión 0<\/span>/.test(raizA.h));
+      /* El layout: las decisiones van en la columna principal (2fr) debajo de las ideas, no en la angosta; el texto sale entero */
+      const iPrinc = raizA.h.indexOf('<div class="ag-princ">'), iLado = raizA.h.indexOf('<div class="ag-lado">'), iDec = raizA.h.indexOf('id="ag-decisiones"'), iIdeas = raizA.h.indexOf('data-id="i1"');
+      check('agencia-ui.js · «Decisiones para vos» vive en la columna principal, debajo de Ideas, y fuera de .ag-lado', iPrinc !== -1 && iLado !== -1 && iIdeas > iPrinc && iIdeas < iDec && iDec < iLado);
+      const reglaDec = (srcAg.match(/\.ag-tit-dec \{([^}]*)\}/) || [])[1] || '';
+      check('agencia-ui.js · el texto de la decisión es multilínea: white-space:normal, sin nowrap ni ellipsis, y .ag-tit de ideas conserva el ellipsis', /white-space:normal/.test(reglaDec) && !/nowrap|ellipsis|overflow:hidden/.test(reglaDec) && /max-width:80ch/.test(reglaDec) && /\.ag-lin-dec \.ag-tog \{[^}]*overflow:visible/.test(srcAg) && /\.ag-lin-dec, \.ag-lin-dec \.ag-tog \{ align-items:flex-start/.test(srcAg) &&/\.ag-tit \{[^}]*text-overflow:ellipsis/.test(srcAg) && /<span class="ag-tit">Idea 1 /.test(raizA.h));
       sA.sA_AG.abiertas.add('ddc0'); sA.sA_pintar();
       check('agencia-ui.js · decisión desplegada: recomendación, aria-expanded y los tres data-ag="decidir" (si / no / despues)', /RECO0/.test(raizA.h) && !/RECO1</.test(raizA.h) && ['si', 'no', 'despues'].every((r) => raizA.h.indexOf('data-ag="decidir" data-id="dc0" data-r="' + r + '"') !== -1) && /aria-expanded="true" aria-controls="ag-desp-ddc0"/.test(raizA.h));
+      /* Menores: la fila se cierra y el «desde» se descarta SOLO si la API respondió */
+      const orig = { alert: sA.alert, CSS: sA.CSS, api: sA.api };
+      const alertas = []; sA.alert = (m) => alertas.push(m); sA.CSS = { escape: (s) => String(s) };
+      const clic = (ds) => { const btn = { dataset: ds }; btn.closest = () => btn; return listenersA.click({ target: btn }); };
+      const estSin = (id) => Object.assign({}, sA.sA_AG.est, { decisiones: sA.sA_AG.est.decisiones.filter((d) => d.id !== id) });
+      const apiOk = async (ruta) => (/decision/.test(ruta) ? estSin('dc0') : sA.sA_AG.est);
+      sA.api = async (ruta) => { if (/decision/.test(ruta)) throw new Error('API caída'); return {}; };
+      enfocado = null;
+      await clic({ ag: 'decidir', id: 'dc0', r: 'si' });
+      check('agencia-ui.js · decidir con la API caída: la fila sigue abierta, se avisa con alert y el foco vuelve al botón apretado', sA.sA_AG.abiertas.has('ddc0') && alertas.length === 1 && /API caída/.test(alertas[0]) && enfocado === '[data-ag="decidir"][data-id="dc0"][data-r="si"]' && sA.sA_AG.enVuelo.size === 0);
+      sA.api = apiOk; enfocado = null;
+      await clic({ ag: 'decidir', id: 'dc0', r: 'si' });
+      check('agencia-ui.js · decidir con la API respondiendo: se borra la clave d<id> y el foco va al toggle de la decisión que quedó en ese lugar', !sA.sA_AG.abiertas.has('ddc0') && enfocado === '[data-ag="tog"][data-id="ddc1"]');
+      /* decisión en vuelo: botones disabled, un segundo clic no llama otra vez a la API y se limpia al responder */
+      sA.sA_AG.abiertas.add('ddc1'); sA.sA_pintar();
+      let llamadas = 0, liberar = null; sA.api = () => { llamadas++; return new Promise((r) => { liberar = r; }); };
+      enfocado = null;
+      const p1 = clic({ ag: 'decidir', id: 'dc1', r: 'si' });
+      const focoEnVuelo = enfocado; // el repintado «en vuelo» devuelve el foco al botón apretado (con disabled caía en body)
+      sA.sA_pintar(); // el polling repinta con la llamada pendiente
+      const deshab = (raizA.h.match(/data-ag="decidir" data-id="dc1" data-r="(si|no|despues)" aria-disabled="true"/g) || []).length;
+      const p2 = clic({ ag: 'decidir', id: 'dc1', r: 'no' });
+      check('agencia-ui.js · decisión en vuelo: Sí/No/Después salen aria-disabled (no disabled) tras un repintado y un segundo clic no vuelve a llamar a la API', deshab === 3 && !/data-ag="decidir"[^>]* disabled/.test(raizA.h) && /aria-busy="true"/.test(raizA.h) && llamadas === 1 && sA.sA_AG.enVuelo.has('dc1'));
+      check('agencia-ui.js · en vuelo el foco sigue en el botón apretado tras el repintado', focoEnVuelo === '[data-ag="decidir"][data-id="dc1"][data-r="si"]');
+      enfocado = null; liberar(estSin('dc1')); await p1; await p2;
+      check('agencia-ui.js · al responder se limpia el «en vuelo» y el HTML repintado no deja botones aria-disabled', sA.sA_AG.enVuelo.size === 0 && llamadas === 1 && !/data-ag="decidir"[^>]*aria-disabled="true"/.test(raizA.h));
+      /* falla con la fila cerrada durante la espera: reabre */
+      sA.sA_AG.abiertas.add('ddc2'); sA.sA_pintar(); let rechaza = null; sA.api = () => new Promise((r, rj) => { rechaza = rj; });
+      const p3 = clic({ ag: 'decidir', id: 'dc2', r: 'no' });
+      sA.sA_AG.abiertas.delete('ddc2'); rechaza(new Error('cayó')); await p3;
+      check('agencia-ui.js · si la API falla y el usuario cerró la fila durante la espera, la fila reabre con sus botones', sA.sA_AG.abiertas.has('ddc2') && /data-ag="decidir" data-id="dc2" data-r="no"/.test(raizA.h) && !/aria-disabled="true"/.test(raizA.h));
+      /* un repintado que tira no deja el id colgado en «en vuelo» */
+      const escOk = sA.esc; let tiro = false; sA.esc = (x) => { if (!tiro) { tiro = true; throw new Error('render roto'); } return escOk(x); };
+      sA.api = async () => sA.sA_AG.est; await clic({ ag: 'decidir', id: 'dc2', r: 'si' }); sA.esc = escOk;
+      check('agencia-ui.js · si pintarAgencia tira, el id se borra de «en vuelo» igual (try/finally)', tiro && sA.sA_AG.enVuelo.size === 0);
+      sA.sA_AG.abiertas.delete('ddc2');
+      /* sin decisión siguiente: el foco va al título «Decisiones para vos» (tabindex -1) */
+      sA.sA_AG.est.decisiones = [{ id: 'dq', tipo: 't', texto: 'Q' }]; sA.sA_AG.abiertas.add('ddq'); sA.api = async () => Object.assign({}, sA.sA_AG.est, { decisiones: [] }); enfocado = null;
+      await clic({ ag: 'decidir', id: 'dq', r: 'si' });
+      check('agencia-ui.js · si no queda otra decisión, el foco va al título «Decisiones para vos» (tabindex="-1")', enfocado === '#ag-dec-tit' && /<h3 id="ag-dec-tit" tabindex="-1">/.test(raizA.h));
+      sA.sA_AG.est.decisiones = [];
+      sA.sA_AG.desdeElegido = { i20: 'P2' }; alertas.length = 0;
+      const est0 = sA.sA_AG.est;
+      sA.api = async (ruta) => { if (/puertas/.test(ruta)) throw new Error('puertas caídas'); if (/consumo/.test(ruta)) return {}; return est0; };
+      await clic({ ag: 'puertas', id: 'i20' });
+      check('agencia-ui.js · puertas con la API caída: el «desde» elegido se conserva, se avisa y el select repintado queda en P2', sA.sA_AG.desdeElegido.i20 === 'P2' && alertas.some((m) => /puertas caídas/.test(m)) && desdeA[0].value === 'P2');
+      sA.api = async (ruta) => (/puertas|consumo/.test(ruta) ? {} : est0);
+      await clic({ ag: 'puertas', id: 'i20' });
+      check('agencia-ui.js · puertas con la API respondiendo: el «desde» elegido se descarta', sA.sA_AG.desdeElegido.i20 === undefined);
+      sA.alert = orig.alert; sA.CSS = orig.CSS; sA.api = orig.api; sA.sA_AG.desdeElegido = {};
       sA.sA_AG.abiertas.delete('ddc0'); sA.sA_AG.est.decisiones = [];
       /* textos de las vistas Aprobadas y Banco */
       sA.sA_AG.est.aprobadas = [idea(30, { estado: 'aprobada' })]; sA.sA_AG.est.banco = [idea(31, { estado: 'banco' })];
