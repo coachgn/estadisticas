@@ -1074,7 +1074,7 @@ titulo('Los agentes con Claude · la guarda numérica');
 
     /* F · ciclos con stub del motor, para fijar el criterio sin armar un paquete entero */
     const STUB = {
-      ventanas: () => [{ numero: 0, cerrado: true, desde: '2026-10-01', hasta: '2026-10-20' }, { numero: 1, cerrado: true, desde: '2026-10-21', hasta: '2026-11-10' }, { numero: 2, cerrado: true, desde: '2026-11-11', hasta: '2026-11-25' }, { numero: 3, cerrado: false, desde: '2026-11-26', hasta: '2026-11-26' }],
+      ventanas: () => [{ numero: 0, cerrado: true, desde: '2026-10-01', hasta: '2026-10-20' }, { numero: 1, cerrado: true, desde: '2026-10-21', hasta: '2026-11-10' }, { numero: 2, cerrado: true, desde: '2026-11-11', hasta: '2026-11-25' }, { numero: 3, cerrado: false, n: 4, partidos: 2, desde: '2026-11-26', hasta: '2026-11-26' }],
       armarVentana: (p, c) => ({ meta: { tipo: 'ciclo', numero: c.numero, n: 4 }, num: c.numero }),
       claveSello: (m) => 'c' + m.numero + 'n' + m.n,
       auditar: (ciclo) => (ciclo.num === 2 ? { apto: false, items: [{ nivel: 'error', texto: 'Faltan los parciales por cuarto.' }] } : { apto: true, items: [] }),
@@ -1096,7 +1096,7 @@ titulo('Los agentes con Claude · la guarda numérica');
       leidosS.push(k + '#' + campos.join(','));
       const h = { 'eq-x|c0n4': { huella: 'h' } }, o = {}; campos.forEach((c) => { if (h[c]) o[c] = h[c]; }); return o;
     };
-    const catF = { cargar: async () => ({ catalogo: { club1: { categorias: { cat1: {}, cat2: {}, cat3: {} } }, torneo1: { tipo: 'torneo', categorias: { zona: {} } } } }),
+    const catF = { cargar: async () => ({ catalogo: { club1: { categorias: { cat1: { plan: 'ORO' }, cat2: {}, cat3: { plan: 'ORO' } } }, torneo1: { tipo: 'torneo', categorias: { zona: {} } } } }),
       resolver: (c, club, slug) => ({ laboratorio: (slug === 'cat1' || slug === 'cat3' || slug === 'zona') ? ['pbp'] : [], equipoPropio: slug === 'cat1' ? 'EQ X' : (slug === 'zona' ? 'EQ ZONA' : '') }) };
     const pbpF = { claveDeDatos: (c, club, slug) => 'sgadd:pbp:' + club + ':' + slug, CAMPO_INDICE: '__indice', campoDeEquipo: (n) => String(n).toLowerCase().replace(/ /g, '-') };
     const rF = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: async () => ({ stdout: '{"cantidad":0}' }), env: {}, sinCache: true, ahora: () => AHORA, kv: kvF, catalogo: catF, pbp: pbpF, ciclos: STUB });
@@ -1106,6 +1106,36 @@ titulo('Los agentes con Claude · la guarda numérica');
     const sinEq = rF.datos.filter((i) => i.origen === 'ciclos' && /equipo propio/.test(i.titulo));
     check('F · las categorías sin equipo propio salen en UN solo ítem «datos» que las lista', sinEq.length === 1 && sinEq[0].gravedad === 'info' && /club1\/cat3/.test(sinEq[0].detalle) && !/club1\/cat2/.test(sinEq[0].detalle));
     check('F · «Decidí hoy» no se llena con ítems de equipos: un solo ciclo listo en todo el catálogo de prueba', rF.decidiHoy.filter((i) => i.origen === 'ciclos').length === 1);
+    /* F bis · solo los clientes con ORO activo (2026-11-28): la temporada pasada y los sin plan no inundan «Decidí hoy» */
+    const catO = { cargar: async () => ({ catalogo: {
+        oro: { categorias: { a: { plan: 'ORO' } } },
+        bronce: { categorias: { a: { plan: 'BRONCE' } } },
+        pausa: { categorias: { a: { plan: 'ORO', estado: 'pausado' } } },
+        vence: { categorias: { a: { plan: 'ORO', vence: '2020-01-01' } } },
+        sinplan: { categorias: { a: {} } } } }),
+      resolver: () => ({ laboratorio: ['pbp'], equipoPropio: 'EQ X' }) };
+    const kvO = { configurado: () => true, leerCampos: async (k, campos) => { const o = {}; campos.forEach((c) => { if (c === 'eq-x') o[c] = paqF('EQ X'); }); return o; } };
+    const rO = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: async () => ({ stdout: '{"cantidad":0}' }), env: {}, sinCache: true, ahora: () => AHORA, kv: kvO, catalogo: catO, pbp: pbpF, ciclos: STUB });
+    const cicDecidi = rO.decidiHoy.filter((i) => i.origen === 'ciclos');
+    check('F bis · solo la categoría ORO activa aparece en «Decidí hoy»', cicDecidi.length === 1 && /^\/cerrar-ciclo oro a /.test(cicDecidi[0].comando));
+    const itSin = rO.datos.filter((i) => i.origen === 'ciclos' && /sin plan ORO activo/.test(i.titulo));
+    check('F bis · las salteadas salen en UN ítem de Datos con club/slug y su plan o estado', itSin.length === 1 && /^4 categorías/.test(itSin[0].titulo) && /bronce\/a \(BRONCE\)/.test(itSin[0].detalle) && /pausa\/a \(pausado\)/.test(itSin[0].detalle) && /vence\/a \(vencido\)/.test(itSin[0].detalle) && /sinplan\/a \(sin plan\)/.test(itSin[0].detalle) && !/oro\/a/.test(itSin[0].detalle) && /solo ORO/.test(itSin[0].detalle));
+    const cs = rO.correSolo.filter((i) => i.origen === 'ciclos');
+    check('F bis · «en curso» en correSolo: «EQ X · ciclo 3 en curso: 2 de 4 partidos» y solo del equipo ORO', cs.length === 1 && cs[0].titulo === 'EQ X · ciclo 3 en curso: 2 de 4 partidos' && /partido 4/.test(cs[0].detalle) && /26\/11/.test(cs[0].detalle));
+    const STUB3 = Object.assign({}, STUB, { ventanas: () => [{ numero: 0, cerrado: false, n: 4, partidos: 3, desde: '2026-10-01', hasta: '2026-10-20' }] });
+    const f3 = MS.itemsCiclosEquipo(STUB3, {}, {}, 'eq-x', 'club1', 'cat1', 'JUJUY BASQUET');
+    check('F bis · «JUJUY BASQUET · ciclo 0 en curso: 3 de 4 partidos» con el último cargado', f3.correSolo.length === 1 && /^JUJUY BASQUET · ciclo 0 en curso: 3 de 4 partidos$/.test(f3.correSolo[0].titulo) && /\(último cargado: 20\/10\)/.test(f3.correSolo[0].detalle) && f3.decidiHoy.length === 0);
+    const STUBc = Object.assign({}, STUB, { ventanas: () => [{ numero: 0, cerrado: true, n: 4, partidos: 4, desde: '2026-10-01', hasta: '2026-10-20' }] });
+    const fc = MS.itemsCiclosEquipo(STUBc, {}, {}, 'eq-x', 'club1', 'cat1', 'EQ X');
+    check('F bis · con la última ventana cerrada no hay «en curso» y el detalle dice «4 de 4 partidos» y «sin publicar»', fc.correSolo.length === 0 && /4 de 4 partidos/.test(fc.decidiHoy[0].detalle) && /sin publicar/.test(fc.decidiHoy[0].detalle) && !/sin sello/.test(fc.decidiHoy[0].detalle));
+    const catH = { cargar: async () => ({ catalogo: {
+        heredaOro: { plan: 'ORO', categorias: { a: {} } },
+        clubPausado: { plan: 'ORO', estado: 'pausado', categorias: { a: { plan: 'ORO' } } } } }),
+      resolver: () => ({ laboratorio: ['pbp'], equipoPropio: 'EQ X' }) };
+    const rH = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: async () => ({ stdout: '{"cantidad":0}' }), env: {}, sinCache: true, ahora: () => AHORA, kv: kvO, catalogo: catH, pbp: pbpF, ciclos: STUB });
+    const cicH = rH.decidiHoy.filter((i) => i.origen === 'ciclos');
+    const sinH = rH.datos.filter((i) => i.origen === 'ciclos' && /sin plan ORO activo/.test(i.titulo));
+    check('F bis · herencia: una categoría sin plan en un club ORO ENTRA; el club pausado con categoría ORO queda AFUERA y listado', cicH.length === 1 && /^\/cerrar-ciclo heredaOro a /.test(cicH[0].comando) && sinH.length === 1 && /clubPausado\/a \(pausado\)/.test(sinH[0].detalle) && !/heredaOro/.test(sinH[0].detalle));
     const rF2 = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: async () => ({ stdout: '{"cantidad":0}' }), env: {}, sinCache: true, ahora: () => AHORA, kv: { configurado: () => false }, catalogo: catF, pbp: pbpF, ciclos: STUB });
     check('F · sin KV configurado: fuentes.ciclos = { ok:false, error }', rF2.fuentes.ciclos.ok === false && /KV/.test(rF2.fuentes.ciclos.error) && /server\/\.env/.test(rF2.fuentes.ciclos.error));
 
@@ -1407,6 +1437,106 @@ titulo('Los agentes con Claude · la guarda numérica');
       sand.MS.filtroOrigen = 'ciclos'; sand.MS.filtro = 'info'; sand.sand_f(mA);
       check('mesa-ui.js · msSanear: tras Actualizar, el filtro por origen o gravedad que ya no tiene ítems se pone en null; el que sigue vigente se conserva', quedo[0] === null && quedo[1] === null && sand.MS.filtroOrigen === 'ciclos' && sand.MS.filtro === 'info');
       check('mesa-ui.js: cargarMesa sanea el filtro antes de pintar', /msSanear\(m\); pintarMesa\(m[,)]/.test(srcUi));
+      {
+        const trCS = srcUi.slice(srcUi.indexOf('function msCorreSolo'), srcUi.indexOf('const MS_GRUPO'));
+        const sandCS = { esc: (x) => String(x == null ? '' : x), msCorto: (x) => x, Array, String, sandCS_f: null };
+        vmx.runInNewContext(trCS + '\nsandCS_f = msCorreSolo;', sandCS);
+        const hCS = sandCS.sandCS_f({ correSolo: [{ origen: 'tareas', gravedad: 'info', titulo: 'Tarea uno', detalle: 'última corrida ayer · próxima mañana · resultado 0' }, { origen: 'ciclos', gravedad: 'info', titulo: 'EQ · ciclo 1 en curso: 3 de 4 partidos', detalle: 'Se puede cerrar cuando se juegue el partido 4' }] });
+        const hCS2 = sandCS.sandCS_f({ correSolo: [{ origen: 'ciclos', gravedad: 'info', titulo: 'Solo ciclo', detalle: 'D' }] });
+        check('mesa-ui.js · «Corre solo»: la tabla Rutina/Última/Próxima es solo de tareas; los ciclos y el candado van en filas compactas debajo, sin esos encabezados', hCS.indexOf('Tarea uno') < hCS.indexOf('</table>') && hCS.indexOf('ciclo 1 en curso') > hCS.indexOf('</table>') && (hCS.match(/<th>/g) || []).length === 3 && !/<table/.test(hCS2) && /Solo ciclo/.test(hCS2));
+      }
+    }
+    {
+      /* Agencia sin cascada (2026-11-28): fuente y pintarAgencia en una vm con un DOM mínimo */
+      const srcAg = fs.readFileSync('centro-mando/agencia-ui.js', 'utf8');
+      check('agencia-ui.js: franja de 4 KPIs con aria-pressed y la grilla 2fr 1fr desde 1000 px', /ag-kpis/.test(srcAg) && ['Ideas por elegir', 'Decisiones', 'En trabajo', 'Por aprobar (P11)'].every((t) => srcAg.indexOf(t) !== -1) && /aria-pressed="' \+ activo/.test(srcAg) && /min-width: 1000px[^}]*2fr 1fr/.test(srcAg));
+      check('agencia-ui.js: corte de 8 con «Ver N más», filas con aria-expanded y ellipsis', /AG_TOPE = 8/.test(srcAg) && /slice\(0, AG_TOPE\)/.test(srcAg) && /Ver ' \+ \(lista\.length - vis\.length\) \+ ' más/.test(srcAg) && /aria-expanded="' \+ abierta/.test(srcAg) && /\.ag-tit \{[^}]*text-overflow:ellipsis/.test(srcAg));
+      check('agencia-ui.js: los <details> de abajo no llevan open fijo en el fuente', !/<details[^>]*\bopen\b/.test(srcAg) && /data-pleg="hablar"/.test(srcAg));
+      check('agencia-ui.js: ningún endpoint fuera de /api/agencia, sin fetch( propio, sin eval ni new Function', !/\bfetch\(/.test(srcAg) && !/\beval\(|new Function/.test(srcAg) && (srcAg.match(/'\/api\/[^']*'/g) || []).every((x) => /^'\/api\/agencia/.test(x)));
+      check('agencia-ui.js: siguen los confirm de correr y de aprobar (P11)', /confirm\('Corre la rutina completa ahora/.test(srcAg) && /confirm\('Vas a aprobar esta pieza \(puerta P11\)/.test(srcAg));
+      const vmA = require('vm');
+      const mkD = () => ({ nodos: [], createElement: () => ({}), head: { appendChild() {} }, addEventListener() {}, querySelectorAll: () => [], querySelector: () => null });
+      const docA = mkD();
+      /* Los elementos del formulario: tras repintar, el DOM «nuevo» trae los valores por defecto (como con innerHTML real). */
+      const elsA = { 'ag-texto': { id: 'ag-texto', dataset: {}, value: '', selectionStart: 0, selectionEnd: 0 }, 'ag-sobre': { value: '', options: [{ value: '' }, { value: 'i3' }] }, 'ag-agente': { value: 'a', options: [{ value: 'a' }, { value: 'b' }] } };
+      const desdeA = [{ dataset: { agDesde: 'i20' }, value: 'P3', options: [{ value: 'P1' }, { value: 'P2' }, { value: 'P3' }] }];
+      const raizA = { set innerHTML(h) { this.h = h; elsA['ag-texto'].value = ''; elsA['ag-sobre'].value = ''; elsA['ag-agente'].value = 'a'; desdeA[0].value = 'P3'; } };
+      let enfocado = null;
+      docA.querySelectorAll = (q) => (/ag-desde/.test(q) ? desdeA : []);
+      let selRest = null, qsFalla = false;
+      docA.querySelector = (q) => { if (qsFalla) throw new Error('selector inválido'); return { focus() { enfocado = q; }, setSelectionRange(a, b) { selRest = [a, b]; } }; };
+      const listenersA = {}; docA.addEventListener = (t, f) => { listenersA[t] = f; };
+      const sA = { sA_AG: null, sA_pintar: null, sA_clave: null, sA_enlace: null, document: docA, $: (id) => (id === 'ag-raiz' ? raizA : (elsA[id] || null)), esc: (x) => String(x == null ? '' : x).replace(/</g, '&lt;'), api: async () => ({}), TAB: 'agencia', setTimeout, clearTimeout, confirm() {}, alert() {}, prompt() {}, Date, Math, Object, Array, Number, String, isFinite };
+      vmA.runInNewContext(srcAg + '\nsA_AG = AG; sA_pintar = pintarAgencia; sA_clave = claveHallazgo; sA_enlace = enlaceSeguro;', sA);
+      const idea = (n, extra) => Object.assign({ id: 'i' + n, rank: n, estado: 'nueva', dia: '2026-11-28', datos: { titulo: 'Idea ' + n + ' <x>', probabilidad: 60, dolor: 'DOLOR' + n, ejercicio: {} }, puertas: {}, notas: [] }, extra || {});
+      sA.sA_AG.est = { dia: '2026-11-28', resumen: 'R', necesitaTuDecision: { ideas: 10, decisiones: 1, p11: 1 }, decisiones: [{ id: 'd1', tipo: 'x', texto: 'Texto' }],
+        ideasHoy: Array.from({ length: 10 }, (_, k) => idea(k + 1)), enCurso: [idea(20, { puertas: { P1: { estado: 'ok' }, P4: { estado: 'frena' } }, frenaEn: 'P4' })], anteriores: [], banco: [], aprobadas: [],
+        hallazgos: [{ tipo: 'competencia', relevancia: 'alta', titulo: 'H1', detalle: 'DETALLEH' }], noPudeVer: [], trabajos: [{ id: 't', tipo: 'rutina', estado: 'listo', inicio: '2026-11-28T10:00:00Z' }], instrucciones: [], informes: [], agentes: { a: 'A' }, puertas: ['P1', 'P2', 'P3', 'P4'] };
+      sA.sA_pintar();
+      const hA = raizA.h;
+      check('agencia-ui.js · pintarAgencia: una fila por idea cortada en 8, «Ver 2 más» y el detalle (dolor) NO está hasta desplegar', (hA.match(/data-ag="tog" data-id="i\d+"/g) || []).length === 8 && /Ver 2 más/.test(hA) && !/DOLOR1</.test(hA));
+      check('agencia-ui.js · pintarAgencia: barra de una línea, 4 KPIs, «En trabajo» avisa la que frena y el título se escapa', /<b>Agencia · 28\/11<\/b>/.test(hA) && (hA.match(/<button class="ag-kpi[ "]/g) || []).length === 4 && /1 frena en una puerta/.test(hA) && /Idea 1 &lt;x>/.test(hA) && !/Idea 1 <x>/.test(hA));
+      check('agencia-ui.js · pintarAgencia: los 4 plegables de abajo y los demás <details> salen cerrados', ['hablar', 'criterios', 'consumo', 'informes'].every((k) => new RegExp('<details[^>]*data-pleg="' + k + '"[^>]*>').test(hA)) && !/<details[^>]*\bopen\b/.test(hA) && /id="ag-agente"/.test(hA) && /id="ag-sobre"/.test(hA) && /id="ag-texto"/.test(hA));
+      sA.sA_AG.abiertas.add('i1'); sA.sA_AG.pleg.add('hablar'); sA.sA_AG.vista = 'curso'; sA.sA_pintar();
+      check('agencia-ui.js · pintarAgencia: la vista «En trabajo» pinta «P4 ✋» y «Aprobar»; un plegable abierto por el usuario se recuerda', /P4 ✋/.test(sA.sA_AG.est && raizA.h) && /data-ag="aprobar"/.test(raizA.h) && /data-pleg="hablar" open/.test(raizA.h));
+      sA.sA_AG.vista = 'hoy'; sA.sA_pintar();
+      check('agencia-ui.js · pintarAgencia: la fila abierta despliega el dolor y el resto de los botones (mismos data-ag)', /DOLOR1</.test(raizA.h) && /data-ag="editar"/.test(raizA.h) && /data-ag="descartar"/.test(raizA.h) && /aria-expanded="true"/.test(raizA.h));
+      /* vuelta 2 */
+      check('agencia-ui.js · enlace de hallazgo: solo http(s); «javascript:» sale como texto escapado, sin href', !/href="javascript/i.test(sA.sA_enlace('javascript:alert(1)')) && /alert\(1\)/.test(sA.sA_enlace('javascript:alert(1)')) && !/<a /.test(sA.sA_enlace('javascript:alert(1)')) && /<a href="https:\/\/x\.test\/a"/.test(sA.sA_enlace('https://x.test/a')) && !/<a /.test(sA.sA_enlace('data:text/html,x')));
+      const hAb = { tipo: 'competencia', relevancia: 'alta', titulo: 'Título Ñandú', detalle: 'DETALLEH', url: 'javascript:alert(1)' };
+      const hOtro = { tipo: 'mercado', relevancia: 'baja', titulo: 'Otro', detalle: 'DETALLEO' };
+      sA.sA_AG.est.hallazgos = [hOtro, hAb]; sA.sA_AG.abiertas.add(sA.sA_clave(hAb)); sA.sA_pintar();
+      check('agencia-ui.js · pintarAgencia: el hallazgo abierto se identifica por tipo+título, no por posición, y el href peligroso no sale', /DETALLEH/.test(raizA.h) && !/DETALLEO/.test(raizA.h) && !/href="javascript/i.test(raizA.h));
+      sA.sA_AG.est.hallazgos = [{ tipo: 'fuente', relevancia: 'baja', titulo: 'Nuevo', detalle: 'DN' }, hOtro, hAb]; sA.sA_pintar();
+      check('agencia-ui.js · pintarAgencia: un hallazgo nuevo arriba no abre otro: sigue abierto el mismo', /DETALLEH/.test(raizA.h) && !/DETALLEO/.test(raizA.h) && !/>DN</.test(raizA.h));
+      sA.sA_AG.est.hallazgos = [];
+      /* El polling repinta: nada de lo que escribe el usuario se pierde */
+      elsA['ag-texto'].value = 'lo que estoy escribiendo'; elsA['ag-sobre'].value = 'i3'; elsA['ag-agente'].value = 'b'; desdeA[0].value = 'P2'; listenersA.change({ target: desdeA[0] });
+      docA.activeElement = { dataset: { ag: 'tog', id: 'i1' } };
+      sA.sA_pintar();
+      check('agencia-ui.js · repintar (polling de 4 s) conserva el texto, el agente, la idea elegida y el «desde» de cada idea', elsA['ag-texto'].value === 'lo que estoy escribiendo' && elsA['ag-sobre'].value === 'i3' && elsA['ag-agente'].value === 'b' && desdeA[0].value === 'P2');
+      check('agencia-ui.js · repintar devuelve el foco al elemento que lo tenía', enfocado === '[data-ag="tog"][data-id="i1"]');
+      docA.activeElement = { id: 'ag-texto', dataset: {} }; enfocado = null; sA.sA_pintar();
+      check('agencia-ui.js · el foco en el textarea se restaura por id', enfocado === '#ag-texto');
+      /* vuelta 3 */
+      desdeA[0].value = 'P1'; sA.sA_AG.desdeElegido = {}; // el usuario NO tocó el select: tras repintar manda la sugerencia nueva (P3 en el DOM nuevo)
+      sA.sA_pintar();
+      check('agencia-ui.js · el «desde» que el usuario no tocó NO se congela: tras repintar queda la sugerencia nueva', desdeA[0].value === 'P3');
+      listenersA.change({ target: Object.assign({}, desdeA[0], { value: 'P2' }) }); sA.sA_pintar();
+      check('agencia-ui.js · el «desde» elegido por el usuario (evento change) sobrevive al repintado', desdeA[0].value === 'P2' && sA.sA_AG.desdeElegido.i20 === 'P2');
+      sA.sA_AG.desdeElegido.i20 = 'P9'; desdeA[0].value = 'P3'; sA.sA_pintar();
+      check('agencia-ui.js · si la opción elegida ya no existe, el select NO queda en blanco (conserva la sugerida)', desdeA[0].value === 'P3');
+      sA.sA_AG.desdeElegido = {};
+      elsA['ag-sobre'].value = 'zzz'; elsA['ag-agente'].value = 'zzz'; sA.sA_pintar();
+      check('agencia-ui.js · ag-sobre y ag-agente solo se restauran si la opción sigue existiendo', elsA['ag-sobre'].value === '' && elsA['ag-agente'].value === 'a');
+      elsA['ag-texto'].selectionStart = 3; elsA['ag-texto'].selectionEnd = 7; docA.activeElement = elsA['ag-texto']; selRest = null; sA.sA_pintar();
+      check('agencia-ui.js · si el foco estaba en el textarea se restaura también la selección', selRest && selRest[0] === 3 && selRest[1] === 7);
+      qsFalla = true; let corto = false; try { sA.sA_pintar(); } catch (_) { corto = true; } qsFalla = false; docA.activeElement = null;
+      check('agencia-ui.js · un error al devolver el foco no corta el repintado (el polling sigue)', corto === false);
+      sA.sA_AG.est.decisiones = [{ id: 'dz', tipo: 't', texto: 'T', recomendacion: 'R' }]; sA.sA_AG.abiertas.add('ddz');
+      check('agencia-ui.js · al decidir se borra la clave d<id> de las filas abiertas (fuente)', /AG\.abiertas\.delete\('d' \+ id\)/.test(srcAg) && /CSS\.escape/.test(srcAg) && /try \{[^]*document\.querySelector\(aFoco\)/.test(srcAg));
+      sA.sA_AG.est.decisiones = []; sA.sA_AG.abiertas.delete('ddz');
+      docA.activeElement = null;
+      sA.sA_AG.abiertas.add('i1'); sA.sA_pintar();
+      check('agencia-ui.js · filas desplegables: aria-controls apunta al panel con id ag-desp-<id>', /aria-controls="ag-desp-i1"/.test(raizA.h) && /id="ag-desp-i1"/.test(raizA.h) && /aria-controls="ag-desp-i2"/.test(raizA.h) && !/id="ag-desp-i2"/.test(raizA.h));
+      sA.sA_AG.abiertas.delete('i1');
+      /* decisiones: una fila cada una */
+      sA.sA_AG.est.decisiones = Array.from({ length: 23 }, (_, k) => ({ id: 'dc' + k, tipo: 'criterio', texto: 'Decisión ' + k, recomendacion: 'RECO' + k }));
+      sA.sA_pintar();
+      const filasDec = (raizA.h.match(/data-ag="tog" data-id="ddc\d+"/g) || []);
+      check('agencia-ui.js · 23 decisiones: 5 filas, «Ver 18 más», sin recomendación ni botones Sí/No/Después hasta desplegar', filasDec.length === 5 && /Ver 18 más/.test(raizA.h) && !/RECO0/.test(raizA.h) && !/data-ag="decidir"/.test(raizA.h) && /title="Decisión 0"/.test(raizA.h));
+      sA.sA_AG.abiertas.add('ddc0'); sA.sA_pintar();
+      check('agencia-ui.js · decisión desplegada: recomendación, aria-expanded y los tres data-ag="decidir" (si / no / despues)', /RECO0/.test(raizA.h) && !/RECO1</.test(raizA.h) && ['si', 'no', 'despues'].every((r) => raizA.h.indexOf('data-ag="decidir" data-id="dc0" data-r="' + r + '"') !== -1) && /aria-expanded="true" aria-controls="ag-desp-ddc0"/.test(raizA.h));
+      sA.sA_AG.abiertas.delete('ddc0'); sA.sA_AG.est.decisiones = [];
+      /* textos de las vistas Aprobadas y Banco */
+      sA.sA_AG.est.aprobadas = [idea(30, { estado: 'aprobada' })]; sA.sA_AG.est.banco = [idea(31, { estado: 'banco' })];
+      sA.sA_AG.vista = 'aprobadas'; sA.sA_pintar();
+      const hApr = raizA.h; sA.sA_AG.vista = 'banco'; sA.sA_pintar();
+      check('agencia-ui.js · vistas Aprobadas y Banco vuelven con su texto tenue (no se publica / no se pierde)', /la publicás vos/.test(hApr) && /Lo que descartás no se pierde/.test(raizA.h) && /data-ag="producir"/.test(hApr) && /data-ag="restaurar"/.test(raizA.h));
+      sA.sA_AG.vista = 'hoy'; sA.sA_AG.est.aprobadas = []; sA.sA_AG.est.banco = [];
+      sA.sA_pintar();
+      check('agencia-ui.js · el botón principal lleva aria-label y title (a 375 px queda solo el ícono)', /<button class="pri" data-ag="puertas" data-id="i1" aria-label="Elegir y pasar por las puertas" title="Elegir y pasar por las puertas">✅<span class="ag-txt">/.test(raizA.h) && /max-width: 700px\) \{.*\.ag-prin \.ag-txt \{ display:none; \}/.test(srcAg));
+      check('agencia-ui.js · «Ver N más» manda el foco a la primera fila oculta; sin estilos muertos y con targets de 40 px y minmax(0,1fr)', /l\[AG_TOPE\]\.id/.test(srcAg) && !/\.ag-(idea|num|cont|hall)\b|\.ag-barra \{|\.ag-dec \{/.test(srcAg) && /\.ag-btns button[^{]*\{ min-height:40px/.test(srcAg) && /\.ag-grilla \{[^}]*minmax\(0,1fr\)/.test(srcAg));
     }
     const html = fs.readFileSync('centro-mando/index.html', 'utf8');
     check('el index tiene la pestaña, su sección, el script y la carga', /data-tab="mesa"/.test(html) && /<section id="tab-mesa" role="tabpanel" hidden>/.test(html) && /\/mesa-ui\.js/.test(html) && /TAB === 'mesa'\) cargarMesa/.test(html));

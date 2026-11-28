@@ -97,14 +97,20 @@ function msDecidi(m) {
 }
 
 function msCorreSolo(m) {
-  const filas = m.correSolo.map((i) => {
+  /* La tabla Rutina / Última / Próxima es solo de las tareas de Windows. Los ítems de ciclos y candado no tienen esas
+     columnas: van debajo como filas compactas, para no quedar bajo encabezados que no les corresponden. */
+  const tareas = m.correSolo.filter((i) => i.origen === 'tareas');
+  const otros = m.correSolo.filter((i) => i.origen !== 'tareas');
+  const punto = (i) => (i.gravedad === 'info' ? 'ver' : 'roj');
+  const filas = tareas.map((i) => {
     const mt = String(i.detalle || '').match(/última corrida (.+?) · próxima (.+?) · resultado/);
-    const punto = i.gravedad === 'info' ? 'ver' : 'roj';
-    return '<tr><td><span class="ms-punto ' + punto + '" aria-hidden="true"></span> <span title="' + esc(i.detalle) + '">' + esc(msCorto(i.titulo)) + '</span></td>' +
+    return '<tr><td><span class="ms-punto ' + punto(i) + '" aria-hidden="true"></span> <span title="' + esc(i.detalle) + '">' + esc(msCorto(i.titulo)) + '</span></td>' +
       (mt ? '<td class="chica">' + esc(mt[1]) + '</td><td class="chica">' + esc(mt[2]) + '</td>' : '<td class="chica" colspan="2">' + esc(i.detalle) + '</td>') + '</tr>';
   }).join('');
+  const resto = otros.map((i) => '<div class="ms-fila"><div class="ms-linea"><span class="ms-punto ' + punto(i) + '" aria-hidden="true"></span><span class="ms-tit" title="' + esc(i.titulo + ' · ' + (i.detalle || '')) + '">' + esc(i.titulo) + '</span></div><div class="ms-det" style="padding-left:18px">' + esc(i.detalle) + '</div></div>').join('');
   return '<div class="card ms-card"><h3>Corre solo <span class="chip">' + esc(m.correSolo.length) + '</span></h3>' +
-    (filas ? '<div class="scroll"><table class="ms-tabla"><thead><tr><th>Rutina</th><th>Última</th><th>Próxima</th></tr></thead><tbody>' + filas + '</tbody></table></div>' : '<p class="tenue">Sin rutinas a la vista.</p>') + '</div>';
+    (filas ? '<div class="scroll"><table class="ms-tabla"><thead><tr><th>Rutina</th><th>Última</th><th>Próxima</th></tr></thead><tbody>' + filas + '</tbody></table></div>' : '') + resto +
+    (!filas && !resto ? '<p class="tenue">Sin rutinas a la vista.</p>' : '') + '</div>';
 }
 
 const MS_GRUPO = { cerebro: 'Pendientes del cerebro', banco: 'Banco de ideas', auditor: 'Auditor', tareas: 'Tareas', ciclos: 'Ciclos', manuales: 'Partidos manuales', cola: 'Cola de Canva', candado: 'Ingesta' };

@@ -289,10 +289,17 @@ function itemsCiclosEquipo(CICLOS, paq, sellos, campo, club, cat, nombre, ahora)
     const abierto = noAptos.filter((n) => n < p.numero).sort((a, b) => a - b)[0];
     const aviso = abierto != null ? ' El ciclo ' + abierto + ' sigue abierto y no es apto: ver Datos.' : '';
     const detalle = listos.length === 1
-      ? 'Cerrado (4 partidos, ' + diaLindo(p.desde) + ' al ' + diaLindo(p.hasta) + '), apto y sin sello.' + aviso
-      : 'Ciclos ' + nums.join(', ') + ', todos aptos y sin sello. Se prepara el más viejo, el ' + p.numero + ' (4 partidos, ' + diaLindo(p.desde) + ' al ' + diaLindo(p.hasta) + ').' + aviso;
+      ? 'Cerrado (4 de 4 partidos, ' + diaLindo(p.desde) + ' al ' + diaLindo(p.hasta) + '), apto y sin publicar.' + aviso
+      : 'Ciclos ' + nums.join(', ') + ', todos aptos y sin publicar. Se prepara el más viejo, el ' + p.numero + ' (4 partidos, ' + diaLindo(p.desde) + ' al ' + diaLindo(p.hasta) + ').' + aviso;
     out.decidiHoy.push(conOp(item('ciclos', titulo, detalle, 'info', '/cerrar-ciclo ' + club + ' ' + cat + ' "' + nombre + '" ' + p.numero),
       'ciclo', { club, categoria: cat, equipo: nombre, ciclo: p.numero }));
+  }
+  /* El MOMENTO REAL: si la última ventana sigue abierta, el ciclo está en curso y todavía no hay nada que cerrar. */
+  const vs = CICLOS.ventanas(paq, 4);
+  const ult = vs[vs.length - 1];
+  if (ult && !ult.cerrado) {
+    out.correSolo.push(item('ciclos', nombre + ' · ciclo ' + ult.numero + ' en curso: ' + ult.partidos + ' de ' + ult.n + ' partidos',
+      'Se puede cerrar cuando se juegue el partido ' + ult.n + ' (último cargado: ' + diaLindo(ult.hasta).slice(0, 5) + ').', 'info'));
   }
   return out;
 }
@@ -425,7 +432,9 @@ async function fuenteCiclos(D) {
   const cat = cascada && cascada.catalogo;
   if (!cat) throw new Error('no se pudo leer el catálogo');
   const out = { decidiHoy: [], correSolo: [], datos: [] };
-  const sinEquipo = [];
+  const sinEquipo = [], sinOro = [];
+  const AUTH = D.auth || require('../js/sgadd-auth.js');
+  const ORO = (AUTH.PLANES && AUTH.PLANES.ORO) || 'ORO';
   /* Igual que paqueteDe de server/rutas/ciclos.js: UN campo (el equipo propio de la categoría), no el hash entero. */
   const ultima = (p) => ((p && p.ciclos && p.ciclos.partidos) || []).reduce((m, x) => (x && x.fecha && x.fecha > m ? x.fecha : m), '');
   for (const club of Object.keys(cat)) {
@@ -434,6 +443,10 @@ async function fuenteCiclos(D) {
     for (const slug of Object.keys(cs)) {
       const res = catalogo.resolver(cat, club, slug);
       if (!res || !(res.laboratorio || []).includes('pbp')) continue;
+      /* Mismo gate que la sección Ciclos de la plataforma (solo ORO con acceso): la temporada pasada de Jujuy y los
+         clientes sin ORO inundaban «Decidí hoy» con ciclos que nadie iba a cerrar. No se callan: van a un ítem de Datos. */
+      const sus = AUTH.suscripcionDeCategoria(cat[club], slug, D.ahora());
+      if (!sus.acceso || sus.plan !== ORO) { sinOro.push(club + '/' + slug + ' (' + (!sus.acceso ? sus.estado : (sus.plan || 'sin plan')) + ')'); continue; }
       if (!res.equipoPropio) { sinEquipo.push(club + '/' + slug); continue; }
       const campo = PBP.campoDeEquipo(res.equipoPropio);
       const claves = PBP.claveDeDatos(cat, club, slug);
@@ -453,6 +466,8 @@ async function fuenteCiclos(D) {
     }
   }
   if (sinEquipo.length) out.datos.push(item('ciclos', sinEquipo.length + (sinEquipo.length === 1 ? ' categoría con laboratorio no tiene' : ' categorías con laboratorio no tienen') + ' equipo propio', 'No se revisaron sus ciclos: ' + sinEquipo.join(', ') + '.', 'info'));
+  if (sinOro.length) out.datos.push(item('ciclos', sinOro.length + (sinOro.length === 1 ? ' categoría con laboratorio sin plan ORO activo' : ' categorías con laboratorio sin plan ORO activo'),
+    'No se revisan sus ciclos: ' + sinOro.join(', ') + '. La sección Ciclos de la plataforma es solo ORO.', 'info'));
   return { items: out };
 }
 

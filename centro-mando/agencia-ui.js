@@ -4,27 +4,19 @@
    página. Todo lo que muestra sale de /api/agencia; las acciones van a
    /api/agencia/*. Nada se publica desde acá.
    ===================================================================== */
-const AG = { est: null, abiertas: new Set(), filtro: 'todos', temporizador: null, dlg: null };
+const AG = { est: null, abiertas: new Set(), pleg: new Set(), vista: 'hoy', verTodas: false, verDec: false, desdeElegido: {}, filtro: 'todos', temporizador: null, dlg: null };
 
 (function estilos() {
   const s = document.createElement('style');
   s.textContent = `
   .ag-fila { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
   .ag-decide { border:2px solid var(--nar); background:rgba(245,166,35,.07); }
-  .ag-cont { display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 12px; }
-  .ag-num { border:1px solid var(--borde); border-radius:10px; padding:8px 14px; min-width:150px; background:#0b1c35; }
-  .ag-num b { font-size:26px; display:block; line-height:1.1; }
-  .ag-num.hay { border-color:var(--nar); } .ag-num.hay b { color:var(--nar); }
-  .ag-idea { border:1px solid var(--borde); border-radius:10px; padding:12px 14px; margin:10px 0; background:#0b1c35; }
   a.btn { display:inline-flex; align-items:center; padding:8px 10px; min-height:40px; border:1px solid var(--borde); border-radius:6px; background:#0b1c35; color:var(--tinta); font-weight:600; text-decoration:none; margin:2px 4px 2px 0; }
   a.btn.pri { background: var(--cel); color:#08162b; border-color: var(--cel); }
-  .ag-idea.top { border-color:var(--cel); }
   .ag-rank { font-size:22px; font-weight:800; color:var(--cel); min-width:38px; }
-  .ag-barra { height:8px; border-radius:6px; background:#06101f; overflow:hidden; min-width:120px; flex:1; max-width:260px; }
-  .ag-barra i { display:block; height:100%; }
   .ag-prob { font-weight:700; min-width:48px; }
   .ag-btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
-  .ag-btns button { min-height:34px; padding:4px 12px; font-size:14px; }
+  .ag-btns button, #ag-raiz button.chico, #ag-raiz select { min-height:40px; padding:4px 12px; font-size:14px; }
   .ag-det { margin-top:8px; display:grid; gap:8px; }
   .ag-det p { margin:0; } .ag-det b { color:var(--tenue); font-size:12px; text-transform:uppercase; letter-spacing:.5px; display:block; }
   .ag-puertas { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0; }
@@ -32,11 +24,34 @@ const AG = { est: null, abiertas: new Set(), filtro: 'todos', temporizador: null
   .ag-pt.ok { color:var(--ver); border-color:var(--ver); } .ag-pt.frena { color:var(--roj); border-color:var(--roj); font-weight:700; } .ag-pt.sin { color:var(--tenue); }
   .ag-nota { border-left:3px solid var(--cel); padding:6px 10px; margin:6px 0; background:rgba(116,172,223,.07); border-radius:0 6px 6px 0; font-size:14px; }
   .ag-nota small { color:var(--tenue); display:block; }
-  .ag-hall { border:1px solid var(--borde); border-radius:10px; padding:10px 12px; background:#0b1c35; }
-  .ag-hall.alta { border-color:var(--nar); }
-  .ag-hall h4 { margin:0 0 4px; text-transform:none; letter-spacing:0; font-size:15px; color:var(--tinta); }
-  .ag-dec { border:1px solid var(--nar); border-radius:10px; padding:10px 12px; margin:8px 0; background:#0b1c35; }
   .ag-trab { font-size:13px; padding:4px 0; border-bottom:1px solid var(--borde); }
+  .ag-barra1 { display:flex; gap:10px; align-items:center; margin:0 0 10px; min-width:0; }
+  @media (max-width: 700px) { .ag-barra1 { flex-wrap:wrap; } .ag-resumen { order:3; flex-basis:100%; } .ag-prin .ag-txt { display:none; } .ag-prin button, .ag-prin a.btn { min-width:40px; padding:4px 8px; } .ag-desp { padding-left:6px; } }
+  .ag-resumen { flex:1 1 0; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--tenue); font-size:14px; }
+  .ag-chico { min-height:40px; padding:4px 12px; font-size:13px; font-weight:500; flex:none; }
+  .ag-kpis { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; margin:0 0 14px; }
+  @media (max-width: 700px) { .ag-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  .ag-kpi { text-align:left; border:1px solid var(--borde); border-radius:10px; padding:8px 12px; background:#0b1c35; min-height:56px; min-width:0; font-weight:500; }
+  .ag-kpi b { display:block; font-size:24px; line-height:1.1; } .ag-kpi.hay b { color:var(--nar); }
+  .ag-kpi span { font-size:12px; color:var(--tenue); letter-spacing:.5px; text-transform:uppercase; } .ag-kpi small { display:block; color:var(--roj); font-size:12px; }
+  .ag-kpi[aria-pressed=true] { outline:2px solid var(--cel); }
+  .ag-grilla { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; align-items:start; }
+  @media (min-width: 1000px) { .ag-grilla { grid-template-columns:2fr 1fr; } }
+  .ag-lado, .ag-abajo { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; min-width:0; } #ag-raiz label, #ag-raiz textarea, #ag-raiz select { min-width:0; max-width:100%; } #ag-raiz .grilla > * { min-width:0; } .ag-abajo { margin-top:14px; }
+  .ag-card { min-width:0; } .ag-card h3 { margin:0 0 8px; font-size:15px; letter-spacing:.5px; }
+  .ag-chips { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 8px; }
+  .ag-chips button { min-height:40px; padding:2px 10px; font-size:13px; font-weight:500; border-radius:20px; }
+  .ag-chips button[aria-pressed=true] { background:var(--cel); color:#08162b; border-color:var(--cel); }
+  .ag-fila1 { border-bottom:1px solid var(--borde); min-width:0; } .ag-fila1:last-child { border-bottom:0; }
+  .ag-lin { display:flex; align-items:center; gap:8px; min-height:40px; min-width:0; }
+  .ag-tog { flex:1 1 0; min-width:0; overflow:hidden; display:flex; align-items:center; gap:8px; text-align:left; background:transparent; border:0; padding:4px 2px; min-height:40px; font-weight:500; }
+  .ag-tog:focus-visible, .ag-kpi:focus-visible, .ag-chips button:focus-visible { outline:2px solid var(--cel); outline-offset:2px; }
+  .ag-tit { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1 1 0; display:block; }
+  .ag-mini { width:48px; height:6px; border-radius:6px; background:#06101f; overflow:hidden; flex:none; } .ag-mini i { display:block; height:100%; }
+  .ag-prin { flex:none; display:flex; gap:6px; } .ag-prin a.btn { justify-content:center; } .ag-prin button, .ag-prin a.btn { min-height:40px; padding:4px 12px; font-size:13px; margin:0; }
+  .ag-desp { padding:2px 4px 10px 22px; } .ag-tog .chip { margin:0; flex:none; }
+  .ag-tabla td { text-align:left; white-space:normal; padding:5px 6px; font-size:13px; } .ag-tabla td.chica { color:var(--tenue); font-size:12px; }
+  details.ag-pleg > summary { min-height:40px; display:flex; align-items:center; cursor:pointer; }
   #ag-dlg { border:1px solid var(--borde); border-radius:12px; background:var(--card); color:var(--tinta); max-width:720px; width:92%; }
   #ag-dlg::backdrop { background:rgba(0,0,0,.6); }
   #ag-dlg label { margin:8px 0; }
@@ -96,75 +111,195 @@ function detalle(i) {
     '<p><b>Puertas que debería pasar</b>' + esc((d.puertas || []).join(' → ')) + '</p></div>';
 }
 
-function tarjetaIdea(i, modo) {
-  const d = i.datos || {}, p = Number(d.probabilidad);
-  const abierta = AG.abiertas.has(i.id) ? ' open' : '';
-  let botones = '';
-  if (modo === 'nueva') botones = '<button class="pri" data-ag="puertas" data-id="' + esc(i.id) + '">✅ Elegir y pasar por las puertas</button><button data-ag="editar" data-id="' + esc(i.id) + '">✏️ Modificar</button><button data-ag="hablar" data-id="' + esc(i.id) + '">💬 Pedir algo a un agente</button><button data-ag="descartar" data-id="' + esc(i.id) + '">🗑 Descartar (al banco)</button>';
-  else if (modo === 'curso') botones = '<button class="pri" data-ag="aprobar" data-id="' + esc(i.id) + '">✅ Aprobar (P11 · no publica)</button><button data-ag="puertas" data-id="' + esc(i.id) + '">🔁 Volver a pasar por las puertas</button>' + selectorDesde(i) + '<button data-ag="editar" data-id="' + esc(i.id) + '">✏️ Modificar</button><button data-ag="hablar" data-id="' + esc(i.id) + '">💬 Pedir algo a un agente</button><button data-ag="descartar" data-id="' + esc(i.id) + '">🗑 Descartar</button>';
-  else if (modo === 'banco') botones = '<button data-ag="restaurar" data-id="' + esc(i.id) + '">↩️ Restaurar</button><button data-ag="hablar" data-id="' + esc(i.id) + '">💬 Pedir algo a un agente</button>';
-  else if (modo === 'aprobada') botones = (i.pieza && i.pieza.archivos && i.pieza.archivos.length ? ((i.pieza.archivos.includes('carrusel.html') ? '<a class="btn pri" target="_blank" href="/agencia/piezas/' + esc(i.id) + '/carrusel.html">👁 Ver la pieza (carrusel)</a>' : '') + (i.pieza.archivos.includes('copy.md') ? '<a class="btn" target="_blank" href="/agencia/piezas/' + esc(i.id) + '/copy.md">📝 Copy</a>' : '') + (i.pieza.archivos.includes('notas.md') ? '<a class="btn" target="_blank" href="/agencia/piezas/' + esc(i.id) + '/notas.md">🔎 Cómo se validó</a>' : '') + '<button data-ag="producir" data-id="' + esc(i.id) + '">🔁 Producir de nuevo</button>') : '<button class="pri" data-ag="producir" data-id="' + esc(i.id) + '">▶ Producir la pieza</button>') + '<button data-ag="devolver" data-id="' + esc(i.id) + '">↩️ Devolver a trabajo</button>';
-  const corre = AG.est.trabajos.some((t) => t.estado === 'corriendo' && t.idea === i.id);
-  return '<div class="ag-idea' + (i.rank === 1 && modo === 'nueva' ? ' top' : '') + '">' +
-    '<div class="ag-fila"><span class="ag-rank">#' + esc(i.rank) + '</span>' +
-    '<div style="flex:1;min-width:220px"><strong style="font-size:17px">' + esc(d.titulo) + '</strong>' +
-    '<div class="tenue" style="font-size:13px">' + diaLindo(i.dia) + ' · ' + esc(d.formato || '') + ' · ' + esc((d.ejercicio || {}).formato || '') + '</div></div>' +
-    (isFinite(p) ? '<span class="ag-prob" style="color:' + colorProb(p) + '" title="Probabilidad estimada de que funcione">' + p + ' %</span><div class="ag-barra" title="Probabilidad estimada de que funcione"><i style="width:' + Math.max(2, Math.min(100, p)) + '%;background:' + colorProb(p) + '"></i></div>' : '') + '</div>' +
-    '<p style="margin:8px 0 0">' + esc(d.dolor || '') + '</p>' +
-    chipsPuertas(i) + notasDe(i) +
-    (corre ? '<div class="aviso">⏳ Los agentes están trabajando en esta idea…</div>' : '') +
-    '<details data-id="' + esc(i.id) + '"' + abierta + '><summary>Ver el detalle completo</summary>' + detalle(i) + '</details>' +
-    '<div class="ag-btns">' + botones + '</div></div>';
+/* ------------------------- filas de una línea (patrón de la Mesa) -------------------------
+   Antes eran ~10 tarjetas apiladas con 4 botones por idea. Ahora cada idea es UNA línea (rank, título, %, puertas,
+   botón principal) y el resto vive al desplegar: se lee el tablero entero de un vistazo y se baja solo por lo que importa. */
+const AG_TOPE = 8;
+const AG_VISTAS = [['hoy', 'Hoy'], ['curso', 'En trabajo'], ['aprobadas', 'Aprobadas'], ['anteriores', 'Anteriores'], ['banco', 'Banco']];
+const AG_FILTROS = [['todos', 'Todo'], ['alta', 'Importante'], ['competencia', 'Competencia'], ['fuente', 'Fuentes'], ['plataforma', 'Plataforma'], ['mercado', 'Mercado']];
+const abiertoSi = (k) => (AG.pleg.has(k) ? ' open' : '');
+
+function listaDeVista(e, v) {
+  if (v === 'curso') return { lista: e.enCurso, modo: 'curso' };
+  if (v === 'aprobadas') return { lista: e.aprobadas, modo: 'aprobada' };
+  if (v === 'anteriores') return { lista: e.anteriores, modo: 'nueva' };
+  if (v === 'banco') return { lista: e.banco, modo: 'banco' };
+  return { lista: e.ideasHoy.filter((i) => i.estado === 'nueva'), modo: 'nueva' };
 }
 
-function pintarAgencia() {
-  const e = AG.est, nd = e.necesitaTuDecision;
-  const numero = (n, t) => '<div class="ag-num' + (n ? ' hay' : '') + '"><b>' + n + '</b>' + t + '</div>';
-  let h = '<div class="card"><div class="ag-fila"><div style="flex:1;min-width:240px"><h2 style="margin:0">Tablero de la agencia' + (e.dia ? ' · ' + diaLindo(e.dia) : '') + '</h2>' +
-    '<p style="margin:4px 0 0">' + esc(e.resumen || (e.dia ? '' : 'Todavía no hay un informe estructurado. Corré la rutina para generar las primeras 5 ideas.')) + '</p></div>' +
-    '<button data-ag="recargar">↻ Recargar</button><button class="pri" data-ag="correr" title="Corre la rutina completa ahora (tarda unos 15 a 25 minutos). Sola corre todos los días a las 8:06.">▶ Correr la rutina ahora</button></div></div>';
+function chipPuertasCorto(i) {
+  const pt = i.puertas || {};
+  if (!Object.keys(pt).length) return '';
+  if (i.frenaEn) return '<span class="ag-pt frena" title="Frena en ' + esc(i.frenaEn) + '">' + esc(i.frenaEn) + ' ✋</span>';
+  const ok = AG.est.puertas.filter((k) => pt[k] && pt[k].estado === 'ok').length;
+  return '<span class="ag-pt ok" title="Puertas aprobadas">' + ok + '/' + AG.est.puertas.length + ' ✓</span>';
+}
 
-  h += '<div class="card ag-decide"><h2>Lo que necesita tu decisión</h2><div class="ag-cont">' +
-    numero(nd.ideas, 'ideas de hoy por elegir') + numero(nd.decisiones, 'decisiones (sí / no)') + numero(nd.p11, 'piezas esperando tu aprobación') + '</div>';
-  if (e.decisiones.length) {
-    h += '<h4>Decisiones para vos</h4>' + e.decisiones.map((d) => '<div class="ag-dec"><span class="chip">' + esc(d.tipo) + '</span> <strong>' + esc(d.texto) + '</strong>' +
-      (d.recomendacion ? '<div class="tenue" style="margin-top:4px">Recomendación de los agentes: ' + esc(d.recomendacion) + '</div>' : '') +
-      '<div class="ag-btns"><button class="pri" data-ag="decidir" data-id="' + esc(d.id) + '" data-r="si">Sí</button><button data-ag="decidir" data-id="' + esc(d.id) + '" data-r="no">No</button><button data-ag="decidir" data-id="' + esc(d.id) + '" data-r="despues">Después</button></div></div>').join('');
-  } else h += '<p class="tenue">No hay decisiones pendientes.</p>';
-  h += '</div>';
+function botonesDe(i, modo) {
+  const id = esc(i.id), b = (a, t, pri) => '<button' + (pri ? ' class="pri"' : '') + ' data-ag="' + a + '" data-id="' + id + '">' + t + '</button>';
+  /* El principal va en la fila: a 375 px el texto se oculta (queda el ícono) y el nombre accesible vive en aria-label y title. */
+  const bp = (a, ico, t) => '<button class="pri" data-ag="' + a + '" data-id="' + id + '" aria-label="' + esc(t) + '" title="' + esc(t) + '">' + ico + '<span class="ag-txt"> ' + esc(t) + '</span></button>';
+  const arch = (i.pieza && i.pieza.archivos) || [];
+  const enl = (f, t, pri) => '<a class="btn' + (pri ? ' pri' : '') + '" target="_blank" href="/agencia/piezas/' + id + '/' + f + '">' + t + '</a>';
+  const enlp = (f, ico, t) => '<a class="btn pri" target="_blank" href="/agencia/piezas/' + id + '/' + f + '" aria-label="' + esc(t) + '" title="' + esc(t) + '">' + ico + '<span class="ag-txt"> ' + esc(t) + '</span></a>';
+  let principal = '', resto = '';
+  if (modo === 'nueva') { principal = bp('puertas', '✅', 'Elegir y pasar por las puertas'); resto = b('editar', '✏️ Modificar') + b('hablar', '💬 Pedir algo a un agente') + b('descartar', '🗑 Descartar (al banco)'); }
+  else if (modo === 'curso') { principal = bp('aprobar', '✅', 'Aprobar (P11 · no publica)'); resto = b('puertas', '🔁 Volver a pasar por las puertas') + selectorDesde(i) + b('editar', '✏️ Modificar') + b('hablar', '💬 Pedir algo a un agente') + b('descartar', '🗑 Descartar'); }
+  else if (modo === 'banco') { principal = bp('restaurar', '↩️', 'Restaurar'); resto = b('hablar', '💬 Pedir algo a un agente'); }
+  else if (modo === 'aprobada') {
+    if (arch.length) {
+      principal = arch.includes('carrusel.html') ? enlp('carrusel.html', '👁', 'Ver la pieza') : bp('producir', '▶', 'Producir de nuevo');
+      resto = (arch.includes('copy.md') ? enl('copy.md', '📝 Copy') : '') + (arch.includes('notas.md') ? enl('notas.md', '🔎 Cómo se validó') : '') + (arch.includes('carrusel.html') ? b('producir', '🔁 Producir de nuevo') : '');
+    } else principal = bp('producir', '▶', 'Producir la pieza');
+    resto += b('devolver', '↩️ Devolver a trabajo');
+  }
+  return { principal, resto };
+}
 
-  const hoy = e.ideasHoy.filter((i) => i.estado === 'nueva');
-  h += '<div class="card"><h2>5 ideas de hoy · de más a menos probable</h2>' +
-    (hoy.length ? hoy.map((i) => tarjetaIdea(i, 'nueva')).join('') : '<p class="tenue">' + (e.ideasHoy.length ? 'Ya resolviste todas las ideas de hoy.' : 'Sin ideas todavía.') + ' Las de mañana llegan solas.</p>') +
-    (e.anteriores.length ? '<details><summary>Ideas de días anteriores que quedaron sin resolver (' + e.anteriores.length + ')</summary>' + e.anteriores.map((i) => tarjetaIdea(i, 'nueva')).join('') + '</details>' : '') + '</div>';
+function filaIdea(i, modo) {
+  const d = i.datos || {}, p = Number(d.probabilidad);
+  const abierta = AG.abiertas.has(i.id);
+  const corre = AG.est.trabajos.some((t) => t.estado === 'corriendo' && t.idea === i.id);
+  const bt = botonesDe(i, modo);
+  const titulo = d.titulo || '';
+  return '<div class="ag-fila1">' +
+    '<div class="ag-lin"><button class="ag-tog" data-ag="tog" data-id="' + esc(i.id) + '" aria-expanded="' + abierta + '" aria-controls="ag-desp-' + esc(i.id) + '" title="' + esc(titulo) + '">' +
+    '<span class="ag-rank">#' + esc(i.rank) + '</span><span class="ag-tit">' + esc(titulo) + '</span>' +
+    (d.probabilidad != null && isFinite(p) ? '<span class="ag-prob" style="color:' + colorProb(p) + '" title="Probabilidad estimada de que funcione">' + p + ' %</span><span class="ag-mini" aria-hidden="true"><i style="width:' + Math.max(2, Math.min(100, p)) + '%;background:' + colorProb(p) + '"></i></span>' : '') +
+    chipPuertasCorto(i) + (corre ? '<span title="Un agente trabaja en esta idea">⏳</span>' : '') + '</button>' +
+    '<span class="ag-prin">' + bt.principal + '</span></div>' +
+    (abierta ? '<div class="ag-desp" id="ag-desp-' + esc(i.id) + '"><p style="margin:0 0 6px">' + esc(d.dolor || '') + '</p>' + chipsPuertas(i) + notasDe(i) +
+      (corre ? '<div class="aviso">⏳ Los agentes están trabajando en esta idea…</div>' : '') +
+      '<div class="tenue" style="font-size:13px">' + diaLindo(i.dia) + ' · ' + esc(d.formato || '') + ' · ' + esc((d.ejercicio || {}).formato || '') + '</div>' +
+      detalle(i) + '<div class="ag-btns">' + bt.resto + '</div></div>' : '') + '</div>';
+}
 
-  h += '<div class="card"><h2>En trabajo · pasando por las puertas</h2>' + (e.enCurso.length ? e.enCurso.map((i) => tarjetaIdea(i, 'curso')).join('') : '<p class="tenue">Ninguna idea en curso. Elegí una arriba y los agentes la revisan puerta por puerta.</p>') + '</div>';
-  if (e.aprobadas.length) h += '<div class="card"><h2>Aprobadas por vos (P11)</h2><p class="tenue">Al aprobar, los agentes producen la pieza solos (tarda unos minutos). No se publica ni se programa nada: la revisás acá y la publicás vos.</p>' + e.aprobadas.map((i) => tarjetaIdea(i, 'aprobada')).join('') + '</div>';
+function panelIdeas(e) {
+  const cuentas = {}; AG_VISTAS.forEach(([v]) => { cuentas[v] = listaDeVista(e, v).lista.length; });
+  if (AG.vista !== 'hoy' && !cuentas[AG.vista]) AG.vista = 'hoy';
+  const tabs = AG_VISTAS.filter(([v]) => v === 'hoy' || cuentas[v]).map(([v, t]) => '<button data-ag="vista" data-v="' + v + '" aria-pressed="' + (AG.vista === v) + '">' + t + ' · ' + cuentas[v] + '</button>').join('');
+  const { lista, modo } = listaDeVista(e, AG.vista);
+  const vis = AG.verTodas ? lista : lista.slice(0, AG_TOPE);
+  const intro = AG.vista === 'aprobadas' ? '<p class="tenue" style="margin:0 0 8px">Al aprobar, los agentes producen la pieza solos (tarda unos minutos). No se publica ni se programa nada: la revisás acá y la publicás vos.</p>' : AG.vista === 'banco' ? '<p class="tenue" style="margin:0 0 8px">Lo que descartás no se pierde: queda acá para cuando las ideas nuevas no funcionen.</p>' : '';
+  const vacio = AG.vista === 'hoy' ? (e.ideasHoy.length ? 'Ya resolviste todas las ideas de hoy.' : 'Sin ideas todavía.') + ' Las de mañana llegan solas.' : 'Nada en esta lista.';
+  return '<div class="card ag-card" id="ag-ideas"><h3>Ideas</h3><div class="ag-chips" role="group" aria-label="Qué ideas ver">' + tabs + '</div>' + intro +
+    (vis.length ? vis.map((i) => filaIdea(i, modo)).join('') : '<p class="tenue">' + vacio + '</p>') +
+    (lista.length > vis.length ? '<button class="ag-chico" data-ag="vermas" style="margin-top:8px">Ver ' + (lista.length - vis.length) + ' más</button>' : '') + '</div>';
+}
 
-  const hall = e.hallazgos.filter((x) => AG.filtro === 'todos' || x.tipo === AG.filtro || (AG.filtro === 'alta' && x.relevancia === 'alta'));
-  h += '<div class="card"><div class="ag-fila"><h2 style="margin:0;flex:1">Qué encontraron hoy los agentes</h2><label class="fila">Ver <select id="ag-filtro">' +
-    ['todos|Todo', 'alta|Solo lo importante', 'competencia|Competencia', 'fuente|Fuentes y bibliografía', 'plataforma|Nuestra plataforma', 'mercado|Mercado'].map((o) => { const [v, t] = o.split('|'); return '<option value="' + v + '"' + (AG.filtro === v ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></label></div>' +
-    '<div class="tres" style="margin-top:12px">' + (hall.length ? hall.map((x) => '<div class="ag-hall ' + esc(x.relevancia) + '"><span class="chip ' + (x.relevancia === 'alta' ? 'id' : '') + '">' + esc(x.tipo) + ' · ' + esc(x.relevancia) + '</span><h4>' + esc(x.titulo) + '</h4><div style="font-size:14px">' + esc(x.detalle) + '</div>' +
-      (x.accionSugerida ? '<div class="aviso" style="font-size:13px">➜ ' + esc(x.accionSugerida) + '</div>' : '') +
-      '<div class="tenue" style="font-size:12px">' + esc(x.fuente || '') + (x.fecha ? ' · ' + esc(x.fecha) : '') + (x.url ? ' · <a href="' + esc(x.url) + '" target="_blank" rel="noopener" style="color:var(--cel)">abrir</a>' : '') + '</div></div>').join('') : '<p class="tenue">Nada para mostrar con este filtro.</p>') + '</div>' +
-    (e.noPudeVer.length ? '<details><summary>Lo que no pudieron ver (' + e.noPudeVer.length + ')</summary><ul>' + e.noPudeVer.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul></details>' : '') + '</div>';
+/* UNA fila por decisión: chip + título con ellipsis. La recomendación y los botones Sí / No / Después viven al desplegar:
+   con 23 decisiones, mostrar todo junto era una cascada y el título quedaba cortado a diez letras por los botones. */
+const AG_TOPE_DEC = 5;
+function panelDecisiones(e) {
+  const vis = AG.verDec ? e.decisiones : e.decisiones.slice(0, AG_TOPE_DEC);
+  const fila = (d) => {
+    const clave = 'd' + d.id, ab = AG.abiertas.has(clave), idd = esc(d.id);
+    return '<div class="ag-fila1"><div class="ag-lin"><button class="ag-tog" data-ag="tog" data-id="' + esc(clave) + '" aria-expanded="' + ab + '" aria-controls="ag-desp-' + esc(clave) + '" title="' + esc(d.texto) + '"><span class="chip">' + esc(d.tipo) + '</span><span class="ag-tit">' + esc(d.texto) + '</span></button></div>' +
+      (ab ? '<div class="ag-desp" id="ag-desp-' + esc(clave) + '">' + (d.recomendacion ? '<div class="tenue">Recomendación de los agentes: ' + esc(d.recomendacion) + '</div>' : '') +
+        '<div class="ag-btns"><button class="pri" data-ag="decidir" data-id="' + idd + '" data-r="si">Sí</button><button data-ag="decidir" data-id="' + idd + '" data-r="no">No</button><button data-ag="decidir" data-id="' + idd + '" data-r="despues">Después</button></div></div>' : '') + '</div>';
+  };
+  return '<div class="card ag-card ag-decide" id="ag-decisiones"><h3>Decisiones para vos <span class="chip">' + e.decisiones.length + '</span></h3>' +
+    (vis.length ? vis.map(fila).join('') : '<p class="tenue">No hay decisiones pendientes.</p>') +
+    (e.decisiones.length > vis.length ? '<button class="ag-chico" data-ag="vermasdec" style="margin-top:8px">Ver ' + (e.decisiones.length - vis.length) + ' más</button>' : '') + '</div>';
+}
 
-  h += '<div class="card"><h2>Hablar con los agentes</h2><p class="tenue" style="margin-top:0">Pedile, recomendá o corregí. El agente responde con criterio de su rol y, si propone un cambio, vos decidís si lo aplicás. No publican nada.</p>' +
-    '<div class="grilla"><label>Agente<select id="ag-agente">' + Object.keys(e.agentes).map((k) => '<option value="' + k + '">' + esc(e.agentes[k]) + '</option>').join('') + '</select></label>' +
-    '<label>Sobre qué idea<select id="ag-sobre"><option value="">Ninguna en particular</option>' + e.ideasHoy.concat(e.enCurso, e.anteriores, e.banco).filter((v, k, a) => a.findIndex((z) => z.id === v.id) === k).map((i) => '<option value="' + esc(i.id) + '">#' + i.rank + ' · ' + esc((i.datos || {}).titulo || '').slice(0, 70) + '</option>').join('') + '</select></label></div>' +
-    '<label style="margin-top:8px">Qué querés<textarea id="ag-texto" maxlength="1500" placeholder="Ej.: Revisá si esta idea no expone a ningún club cliente. / Proponé otro juego reducido. / Recomiendo que la serie arranque con el reloj de posesión."></textarea></label>' +
-    '<div class="ag-btns"><button class="pri" data-ag="enviar">Enviar al agente</button><button data-ag="instruccion" title="Queda guardada y la rutina diaria la lee antes de proponer las ideas de mañana">📌 Dejar como criterio para las próximas ideas</button></div>' +
-    (e.trabajos.length ? '<h4 style="margin-top:14px">Trabajos de los agentes</h4>' + e.trabajos.map((t) => '<div class="ag-trab">' + (t.estado === 'corriendo' ? '⏳' : t.estado === 'listo' ? '✅' : '⚠️') + ' <b>' + esc(t.tipo === 'puertas' ? 'Puertas' : t.tipo === 'rutina' ? 'Rutina diaria' : (e.agentes[t.agente] || 'Agente')) + '</b> · ' + fechaCorta(t.inicio) + ' · ' + esc(t.estado === 'corriendo' ? 'trabajando…' : (t.error || t.resumen || 'listo')) + '</div>').join('') : '') +
-    (e.instrucciones.length ? '<h4 style="margin-top:14px">Criterios y decisiones recientes</h4>' + e.instrucciones.map((x) => '<div class="ag-trab"><span class="tenue">' + fechaCorta(x.cuando) + ' · ' + esc(x.de) + '</span> — ' + esc(x.texto) + '</div>').join('') : '') + '</div>';
+function filaTrabajo(t) {
+  const e = AG.est;
+  return '<tr><td>' + (t.estado === 'corriendo' ? '⏳' : t.estado === 'listo' ? '✅' : '⚠️') + ' <b>' + esc(t.tipo === 'puertas' ? 'Puertas' : t.tipo === 'rutina' ? 'Rutina diaria' : (e.agentes[t.agente] || 'Agente')) + '</b></td><td class="chica">' + fechaCorta(t.inicio) + '</td><td class="chica">' + esc(t.estado === 'corriendo' ? 'trabajando…' : (t.error || t.resumen || 'listo')) + '</td></tr>';
+}
+function panelTrabajos(e) {
+  const todos = e.trabajos.slice().reverse(); // el servidor los entrega del más viejo al más nuevo
+  const tabla = (xs) => '<div class="scroll"><table class="ag-tabla"><tbody>' + xs.map(filaTrabajo).join('') + '</tbody></table></div>';
+  return '<div class="card ag-card"><h3>Trabajos de los agentes <span class="chip">' + todos.length + '</span></h3>' +
+    (todos.length ? tabla(todos.slice(0, 5)) + (todos.length > 5 ? '<details class="ag-pleg" data-pleg="trab-resto"' + abiertoSi('trab-resto') + '><summary>Ver los otros ' + (todos.length - 5) + '</summary>' + tabla(todos.slice(5)) + '</details>' : '') : '<p class="tenue">Ningún agente trabajó todavía.</p>') + '</div>';
+}
 
-  h += '<div class="card"><h2>Banco de ideas · ' + e.banco.length + ' de reserva</h2><p class="tenue" style="margin-top:0">Lo que descartás no se pierde: queda acá para cuando las ideas nuevas no funcionen.</p>' +
-    (e.banco.length ? e.banco.map((i) => tarjetaIdea(i, 'banco')).join('') : '<p class="tenue">El banco está vacío.</p>') + '</div>';
-  if (e.informes.length) h += '<p class="tenue" style="font-size:12px">Informes completos en contenido/vigilancia/: ' + e.informes.map(esc).join(' · ') + '</p>';
+/* Clave estable del hallazgo: tipo + título sin tildes ni signos. Por índice, un hallazgo nuevo corría la lista y abría otro. */
+const claveHallazgo = (x) => 'h-' + String((x.tipo || '') + ' ' + (x.titulo || '')).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+/* El href sale de un texto que escribió un agente leyendo la web: solo http(s). Con «javascript:» el clic ejecutaría código en la página. */
+const enlaceSeguro = (u) => (/^https?:\/\//i.test(String(u)) ? '<a href="' + esc(u) + '" target="_blank" rel="noopener" style="color:var(--cel)">abrir</a>' : '<span class="tenue" title="No es un enlace web">' + esc(u) + '</span>');
+
+function panelHallazgos(e) {
+  const pasa = (x, f) => f === 'todos' || x.tipo === f || (f === 'alta' && x.relevancia === 'alta');
+  const chips = AG_FILTROS.map(([v, t]) => '<button data-ag="filtro" data-f="' + v + '" aria-pressed="' + (AG.filtro === v) + '">' + t + ' · ' + e.hallazgos.filter((x) => pasa(x, v)).length + '</button>').join('');
+  const hall = e.hallazgos.map((x, k) => ({ x, k })).filter((o) => pasa(o.x, AG.filtro));
+  const fila = (o) => {
+    const x = o.x, clave = claveHallazgo(o.x), ab = AG.abiertas.has(clave);
+    return '<div class="ag-fila1"><div class="ag-lin"><button class="ag-tog" data-ag="tog" data-id="' + clave + '" aria-expanded="' + ab + '" aria-controls="ag-desp-' + clave + '" title="' + esc(x.titulo) + '"><span class="chip ' + (x.relevancia === 'alta' ? 'id' : '') + '">' + esc(x.tipo) + '</span><span class="ag-tit">' + esc(x.titulo) + '</span></button></div>' +
+      (ab ? '<div class="ag-desp" id="ag-desp-' + clave + '"><div style="font-size:14px">' + esc(x.detalle) + '</div>' + (x.accionSugerida ? '<div class="aviso" style="font-size:13px">➜ ' + esc(x.accionSugerida) + '</div>' : '') +
+        '<div class="tenue" style="font-size:12px">' + esc(x.fuente || '') + (x.fecha ? ' · ' + esc(x.fecha) : '') + (x.url ? ' · ' + enlaceSeguro(x.url) : '') + '</div></div>' : '') + '</div>';
+  };
+  return '<div class="card ag-card"><h3>Qué encontraron hoy <span class="chip">' + e.hallazgos.length + '</span></h3><div class="ag-chips" role="group" aria-label="Filtrar hallazgos">' + chips + '</div>' +
+    (hall.length ? hall.map(fila).join('') : '<p class="tenue">Nada para mostrar con este filtro.</p>') +
+    (e.noPudeVer.length ? '<details class="ag-pleg" data-pleg="nopude"' + abiertoSi('nopude') + '><summary>Lo que no pudieron ver (' + e.noPudeVer.length + ')</summary><ul>' + e.noPudeVer.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul></details>' : '') + '</div>';
+}
+
+/* Cerrados por defecto: son consulta, no decisión. Solo se abren si el usuario los abrió (AG.pleg) o si pidió hablar desde una fila. */
+function plegables(e) {
+  const todas = e.ideasHoy.concat(e.enCurso, e.anteriores, e.banco).filter((v, k, a) => a.findIndex((z) => z.id === v.id) === k);
   const cs = AG.consumo || [];
-  h += '<div class="card"><h2>Consumo de la rutina (plan de Claude)</h2>' + (cs.length ? '<div class="ag-cont">' + cs.map((c) => '<div class="ag-fila"><b>' + esc(c.fecha) + '</b> · ' + esc(c.tipo) + ' · ' + esc(c.modelo || '') + ' · ' + Math.round((Number(c.entrada || 0) + Number(c.cacheLeido || 0) + Number(c.cacheEscrito || 0) + Number(c.salida || 0)) / 1000) + ' mil tokens · ' + Math.round(Number(c.segundos || 0) / 60) + ' min</div>').join('') + '</div>' : '<p>Todavía no hay corridas registradas con el ejecutor nuevo.</p>') + '<p style="margin:6px 0 0">Sola corre una vez por día (la semanal, los lunes). Repetirla el mismo día pide confirmación.</p></div>';
+  return '<details class="ag-pleg ag-card card" id="ag-hablar" data-pleg="hablar"' + abiertoSi('hablar') + '><summary>Hablar con los agentes</summary><p class="tenue" style="margin-top:0">Pedile, recomendá o corregí. El agente responde con criterio de su rol y, si propone un cambio, vos decidís si lo aplicás. No publican nada.</p>' +
+    '<div class="grilla"><label>Agente<select id="ag-agente">' + Object.keys(e.agentes).map((k) => '<option value="' + k + '">' + esc(e.agentes[k]) + '</option>').join('') + '</select></label>' +
+    '<label>Sobre qué idea<select id="ag-sobre"><option value="">Ninguna en particular</option>' + todas.map((i) => '<option value="' + esc(i.id) + '">#' + i.rank + ' · ' + esc((i.datos || {}).titulo || '').slice(0, 70) + '</option>').join('') + '</select></label></div>' +
+    '<label style="margin-top:8px">Qué querés<textarea id="ag-texto" maxlength="1500" placeholder="Ej.: Revisá si esta idea no expone a ningún club cliente. / Proponé otro juego reducido. / Recomiendo que la serie arranque con el reloj de posesión."></textarea></label>' +
+    '<div class="ag-btns"><button class="pri" data-ag="enviar">Enviar al agente</button><button data-ag="instruccion" title="Queda guardada y la rutina diaria la lee antes de proponer las ideas de mañana">📌 Dejar como criterio para las próximas ideas</button></div></details>' +
+    '<details class="ag-pleg ag-card card" data-pleg="criterios"' + abiertoSi('criterios') + '><summary>Criterios y decisiones recientes · ' + e.instrucciones.length + '</summary>' +
+    (e.instrucciones.length ? e.instrucciones.map((x) => '<div class="ag-trab"><span class="tenue">' + fechaCorta(x.cuando) + ' · ' + esc(x.de) + '</span> — ' + esc(x.texto) + '</div>').join('') : '<p class="tenue">Todavía no dejaste criterios.</p>') + '</details>' +
+    '<details class="ag-pleg ag-card card" data-pleg="consumo"' + abiertoSi('consumo') + '><summary>Consumo de la rutina (plan de Claude)</summary>' + (cs.length ? cs.map((c) => '<div class="ag-fila"><b>' + esc(c.fecha) + '</b> · ' + esc(c.tipo) + ' · ' + esc(c.modelo || '') + ' · ' + Math.round((Number(c.entrada || 0) + Number(c.cacheLeido || 0) + Number(c.cacheEscrito || 0) + Number(c.salida || 0)) / 1000) + ' mil tokens · ' + Math.round(Number(c.segundos || 0) / 60) + ' min</div>').join('') : '<p>Todavía no hay corridas registradas con el ejecutor nuevo.</p>') + '<p style="margin:6px 0 0">Sola corre una vez por día (la semanal, los lunes). Repetirla el mismo día pide confirmación.</p></details>' +
+    '<details class="ag-pleg ag-card card" data-pleg="informes"' + abiertoSi('informes') + '><summary>Informes completos · ' + e.informes.length + '</summary>' + (e.informes.length ? '<p class="tenue" style="font-size:12px">En contenido/vigilancia/: ' + e.informes.map(esc).join(' · ') + '</p>' : '<p class="tenue">Sin informes todavía.</p>') + '</details>';
+}
+
+function kpiAg(v, titulo, n, extra, activo) {
+  return '<button class="ag-kpi' + (n ? ' hay' : '') + '" data-ag="kpi" data-v="' + v + '" aria-pressed="' + activo + '"><b>' + n + '</b><span>' + titulo + '</span>' + (extra ? '<small>' + esc(extra) + '</small>' : '') + '</button>';
+}
+
+/* El polling de 4 s repinta con innerHTML: sin esto se perdía lo que el usuario estaba escribiendo, las selecciones y el foco.
+   El «desde» de cada idea se guarda SOLO si el usuario lo eligió (AG.desdeElegido, por el evento change): si no, se congelaba la
+   sugerencia vieja (P1) cuando las puertas avanzaban y la sugerida pasaba a P3. */
+const escCss = (x) => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(x) : String(x).replace(/[^a-zA-Z0-9_-]/g, (c) => '\\' + c));
+function selectorDeFoco(el) {
+  if (!el || !el.dataset) return '';
+  if (el.id) return '#' + escCss(el.id);
+  if (el.dataset.agDesde) return '[data-ag-desde="' + el.dataset.agDesde + '"]';
+  if (!el.dataset.ag) return '';
+  return '[data-ag="' + el.dataset.ag + '"]' + ['id', 'v', 'f', 'r'].filter((k) => el.dataset[k]).map((k) => '[data-' + k + '="' + el.dataset[k] + '"]').join('');
+}
+/* Un valor solo se restaura si la opción sigue existiendo: si no, el select quedaba en blanco y mandaba desde = ''. */
+const tieneOpcion = (el, v) => !el.options || Array.prototype.some.call(el.options, (o) => o.value === v);
+function guardarForm() {
+  const act = document.activeElement;
+  const g = { campos: {}, foco: selectorDeFoco(act), sel: null };
+  ['ag-texto', 'ag-sobre', 'ag-agente'].forEach((id) => { const el = $(id); if (el) g.campos[id] = el.value; });
+  if (act && act.id === 'ag-texto' && act.selectionStart != null) g.sel = [act.selectionStart, act.selectionEnd];
+  return g;
+}
+function restaurarForm(g) {
+  Object.keys(g.campos).forEach((id) => { const el = $(id); if (el && tieneOpcion(el, g.campos[id])) el.value = g.campos[id]; });
+  document.querySelectorAll('select[data-ag-desde]').forEach((el) => { const v = AG.desdeElegido[el.dataset.agDesde]; if (v != null && tieneOpcion(el, v)) el.value = v; });
+}
+
+function pintarAgencia(foco) {
+  const guardado = guardarForm();
+  const e = AG.est, nd = e.necesitaTuDecision;
+  const resumen = e.resumen || (e.dia ? '' : 'Todavía no hay un informe estructurado. Corré la rutina para generar las primeras 5 ideas.');
+  const frenan = e.enCurso.filter((i) => i.frenaEn).length;
+  const h = '<div class="ag-barra1"><b>Agencia' + (e.dia ? ' · ' + esc(diaLindo(e.dia).slice(0, 5)) : '') + '</b><span class="ag-resumen" title="' + esc(resumen) + '">' + esc(resumen) + '</span>' +
+    '<button class="ag-chico" data-ag="recargar">↻ Recargar</button><button class="pri ag-chico" data-ag="correr" title="Corre la rutina completa ahora (tarda unos 15 a 25 minutos). Sola corre todos los días a las 8:06.">▶ Correr la rutina</button></div>' +
+    '<div class="ag-kpis">' + kpiAg('hoy', 'Ideas por elegir', nd.ideas, '', AG.vista === 'hoy') + kpiAg('decisiones', 'Decisiones', nd.decisiones, '', false) +
+      kpiAg('curso', 'En trabajo', e.enCurso.length, frenan ? frenan + (frenan === 1 ? ' frena en una puerta' : ' frenan en una puerta') : '', AG.vista === 'curso') + kpiAg('p11', 'Por aprobar (P11)', nd.p11, '', false) + '</div>' +
+    '<div class="ag-grilla">' + panelIdeas(e) + '<div class="ag-lado">' + panelDecisiones(e) + panelTrabajos(e) + panelHallazgos(e) + '</div></div>' +
+    '<div class="ag-abajo">' + plegables(e) + '</div>';
   $('ag-raiz').innerHTML = h;
-  const f = $('ag-filtro'); if (f) f.onchange = () => { AG.filtro = f.value; pintarAgencia(); };
-  document.querySelectorAll('#ag-raiz details[data-id]').forEach((d) => d.addEventListener('toggle', () => { d.open ? AG.abiertas.add(d.dataset.id) : AG.abiertas.delete(d.dataset.id); }));
+  restaurarForm(guardado);
+  document.querySelectorAll('#ag-raiz details[data-pleg]').forEach((d) => d.addEventListener('toggle', () => { d.open ? AG.pleg.add(d.dataset.pleg) : AG.pleg.delete(d.dataset.pleg); }));
+  /* Repintar destruye el botón apretado: el foco vuelve al equivalente en vez de caer en el body. */
+  const aFoco = foco || guardado.foco;
+  if (aFoco) {
+    try {
+      const el = document.querySelector(aFoco);
+      if (el) { el.focus(); if (!foco && guardado.sel && el.setSelectionRange) el.setSelectionRange(guardado.sel[0], guardado.sel[1]); }
+    } catch (_) { /* un selector inválido no puede cortar el polling */ }
+  }
 }
 
 function dialogoEdicion(i) {
@@ -192,15 +327,26 @@ document.addEventListener('click', async (ev) => {
     if (a === 'recargar') return cargarAgencia();
     if (a === 'producir') { try { AG.est = await api('/api/agencia/producir', { id }); } catch (err) { alert(err.message); } return pintarAgencia(); }
     if (a === 'correr') { if (!confirm('Corre la rutina completa ahora: lee Instagram, YouTube y los sitios, y arma 5 ideas nuevas. Tarda entre 15 y 25 minutos. ¿Seguimos?')) return; try { await api('/api/agencia/correr', {}); } catch (err) { if (!/ya corri/.test(err.message)) { alert(err.message); return; } if (!confirm(err.message)) return; try { await api('/api/agencia/correr', { forzar: true }); } catch (e2) { alert(e2.message); return; } } return cargarAgencia(); }
-    if (a === 'puertas') { const sel = document.querySelector('[data-ag-desde="' + id + '"]'); const desde = sel ? sel.value : 'P1'; try { await api('/api/agencia/puertas', { id, desde }); } catch (err) { alert(err.message); } return cargarAgencia(); }
+    if (a === 'puertas') { const sel = document.querySelector('[data-ag-desde="' + id + '"]'); const desde = sel ? sel.value : 'P1'; delete AG.desdeElegido[id]; try { await api('/api/agencia/puertas', { id, desde }); } catch (err) { alert(err.message); } return cargarAgencia(); }
     if (a === 'descartar') { const m = prompt('¿Por qué la descartás? (opcional, queda anotado en el banco)', ''); if (m === null) return; AG.est = await api('/api/agencia/accion', { id, accion: 'descartar', texto: m }); return pintarAgencia(); }
     if (a === 'restaurar' || a === 'devolver') { AG.est = await api('/api/agencia/accion', { id, accion: a }); return pintarAgencia(); }
     if (a === 'aprobar') { if (!confirm('Vas a aprobar esta pieza (puerta P11). Eso NO la publica ni la programa: solo deja constancia de tu aprobación. ¿Aprobar?')) return; AG.est = await api('/api/agencia/accion', { id, accion: 'aprobar' }); return pintarAgencia(); }
     if (a === 'editar') return dialogoEdicion(ideaPorId(id));
-    if (a === 'hablar') { $('ag-sobre').value = id; $('ag-texto').focus(); $('ag-texto').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
-    if (a === 'decidir') { AG.est = await api('/api/agencia/decision', { id, respuesta: b.dataset.r }); return pintarAgencia(); }
+    if (a === 'hablar') { const d = $('ag-hablar'); if (d) d.open = true; AG.pleg.add('hablar'); $('ag-sobre').value = id; $('ag-texto').focus(); $('ag-texto').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    if (a === 'tog') { AG.abiertas.has(id) ? AG.abiertas.delete(id) : AG.abiertas.add(id); return pintarAgencia('[data-ag="tog"][data-id="' + id + '"]'); }
+    if (a === 'vista') { AG.vista = b.dataset.v; AG.verTodas = false; return pintarAgencia('[data-ag="vista"][data-v="' + b.dataset.v + '"]'); }
+    if (a === 'vermas') { const l = listaDeVista(AG.est, AG.vista).lista; AG.verTodas = true; return pintarAgencia(l[AG_TOPE] ? '[data-ag="tog"][data-id="' + l[AG_TOPE].id + '"]' : ''); }
+    if (a === 'vermasdec') { AG.verDec = true; const d = AG.est.decisiones[AG_TOPE_DEC]; return pintarAgencia(d ? '[data-ag="tog"][data-id="d' + d.id + '"]' : ''); }
+    if (a === 'filtro') { AG.filtro = b.dataset.f; return pintarAgencia('[data-ag="filtro"][data-f="' + b.dataset.f + '"]'); }
+    if (a === 'kpi') {
+      if (b.dataset.v === 'decisiones') { const d = $('ag-decisiones'); if (d) d.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+      AG.vista = b.dataset.v === 'p11' ? 'curso' : b.dataset.v; AG.verTodas = false; return pintarAgencia('[data-ag="kpi"][data-v="' + b.dataset.v + '"]');
+    }
+    if (a === 'decidir') { AG.abiertas.delete('d' + id); AG.est = await api('/api/agencia/decision', { id, respuesta: b.dataset.r }); return pintarAgencia(); }
     if (a === 'aplicar') { AG.est = await api('/api/agencia/aplicar', { idea: id, indice: b.dataset.k }); return pintarAgencia(); }
     if (a === 'enviar') { const t = $('ag-texto').value.trim(); if (!t) return alert('Escribí qué querés pedirle al agente.'); await api('/api/agencia/agente', { agente: $('ag-agente').value, idea: $('ag-sobre').value || null, texto: t }); $('ag-texto').value = ''; return cargarAgencia(); }
     if (a === 'instruccion') { const t = $('ag-texto').value.trim(); if (!t) return alert('Escribí el criterio.'); AG.est = await api('/api/agencia/instruccion', { texto: t }); $('ag-texto').value = ''; return pintarAgencia(); }
   } catch (err) { alert(err.message); }
 });
+
+document.addEventListener('change', (ev) => { const t = ev.target; if (t && t.dataset && t.dataset.agDesde) AG.desdeElegido[t.dataset.agDesde] = t.value; });

@@ -165,7 +165,7 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
 node test-contenido.js     # 142 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
                            #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
 
-node test-centro-mando.js  # 610 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
+node test-centro-mando.js  # 646 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
                            #             el texto libre de «A medida», el cruce de dos métricas y la voz de entrenador-analista (110),
                            #             el % de victorias, los textos sin cortar y la tesis de vestuario (111)
                            #             (pide «npm install» en centro-mando/ una vez: los agentes usan el SDK de Claude, punto 107)
