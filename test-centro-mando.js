@@ -1013,9 +1013,14 @@ titulo('Los agentes con Claude · la guarda numérica');
     /* NINGUNA llamada de esta sección sale a Upstash: servidor.js cargó server/.env y kv.configurado() lee process.env,
        así que sin un kv inyectado la fuente «ciclos» leía el catálogo REAL (313 ítems, minutos de red). `mesaT` inyecta
        un kv de guardia; si alguna lectura lo toca para leer, lanza. */
-    const guardia = { configurado: () => false, leerHash: async () => { throw new Error('GUARDIA: se leyó el KV real'); }, leerCampos: async () => { throw new Error('GUARDIA: se leyó el KV real'); } };
+    /* La guardia deja huella propia: cuenta cuántas veces se la consultó (usos) y lanza GUARDIA si alguien le LEE algo. Un KV real sin configurar daría el
+       mismo error de «KV no configurado» pero NO sumaría usos: por eso el check final compara los usos contra las llamadas, y ningún error de fuente puede decir GUARDIA. */
+    const guardia = { usos: 0, configurado() { guardia.usos++; return false; }, leerHash: async () => { throw new Error('GUARDIA: se leyó el KV real'); }, leerCampos: async () => { throw new Error('GUARDIA: se leyó el KV real'); } };
     const resultadosMesa = [];
-    const mesaT = async (d, o) => { const r = await MS.mesa(Object.assign({ kv: guardia }, d), o); resultadosMesa.push({ kvPropio: !!(d && d.kv), r }); return r; };
+    /* Todas las llamadas a mesa() pasan por mesaW (incluida la lectura en vuelo): registra el resultado y devuelve LA MISMA promesa, así que dos pedidos compartidos
+       cuentan UNA lectura (se deduplica por identidad del resultado). */
+    const mesaW = (d, o, usa) => { const p = MS.mesa(d, o); const g = usa === undefined ? (!d || !d.kv || d.kv === guardia) : usa; p.then((r) => { resultadosMesa.push({ usaGuardia: g, r }); }, () => {}); return p; };
+    const mesaT = (d, o) => mesaW(Object.assign({ kv: guardia }, d), o, !d || !d.kv || d.kv === guardia);
 
     /* A · el auditor */
     const inf = [{ nivel: 'ERROR', area: 'escudos', sujeto: 'club-x', texto: 'falta el escudo', arreglo: 'node server/bin/x.js' }, { nivel: 'AVISO', area: 'fechas', sujeto: 'torneo-y', texto: 'fecha rara', arreglo: null }];
@@ -1080,11 +1085,17 @@ titulo('Los agentes con Claude · la guarda numérica');
     check('F · cerrado pero NO apto: «Datos» como riesgo con el motivo de la auditoría', f.datos.length === 1 && f.datos[0].gravedad === 'riesgo' && /parciales por cuarto/.test(f.datos[0].detalle));
     check('F · el ciclo abierto (3 de 4) no se ofrece', !todos(f).some((i) => / 3 de /.test(i.titulo)));
     /* Un catálogo con: un cliente con equipo propio, una categoría sin equipo propio, una entrada tipo «torneo» y un equipo AJENO en el mismo paquete. */
-    const leidosF = [];
+    const leidosF = [], leidosS = [];
     const paqF = (eq) => ({ equipo: eq, ciclos: { partidos: [{ fecha: '2026-11-01' }] } });
     const kvF = { configurado: () => true,
       leerCampos: async (k, campos) => { leidosF.push(k + '#' + campos.join(',')); const h = { 'eq-x': paqF('EQ X'), 'eq-ajeno': paqF('EQ AJENO') }; const o = {}; campos.forEach((c) => { if (h[c]) o[c] = h[c]; }); return o; },
-      leerHash: async (k) => { if (/^sgadd:pbp:/.test(k)) throw new Error('NO se lee el hash entero del paquete'); return { 'eq-x|c0n4': { huella: 'h' } }; } };
+      leerHash: async (k) => { throw new Error('NO se lee ningún hash entero (' + k + '): ni el paquete ni los sellos'); } };
+    const leerCamposPbp = kvF.leerCampos;
+    kvF.leerCampos = async (k, campos) => {
+      if (!/^sgadd:ciclos:/.test(k)) return leerCamposPbp(k, campos);
+      leidosS.push(k + '#' + campos.join(','));
+      const h = { 'eq-x|c0n4': { huella: 'h' } }, o = {}; campos.forEach((c) => { if (h[c]) o[c] = h[c]; }); return o;
+    };
     const catF = { cargar: async () => ({ catalogo: { club1: { categorias: { cat1: {}, cat2: {}, cat3: {} } }, torneo1: { tipo: 'torneo', categorias: { zona: {} } } } }),
       resolver: (c, club, slug) => ({ laboratorio: (slug === 'cat1' || slug === 'cat3' || slug === 'zona') ? ['pbp'] : [], equipoPropio: slug === 'cat1' ? 'EQ X' : (slug === 'zona' ? 'EQ ZONA' : '') }) };
     const pbpF = { claveDeDatos: (c, club, slug) => 'sgadd:pbp:' + club + ':' + slug, CAMPO_INDICE: '__indice', campoDeEquipo: (n) => String(n).toLowerCase().replace(/ /g, '-') };
@@ -1156,23 +1167,247 @@ titulo('Los agentes con Claude · la guarda numérica');
     MS.vaciarCache();
     let lectBloq = 0, soltar; const traba = new Promise((r) => { soltar = r; });
     const dVuelo = Object.assign({}, dCache, { exec: async () => { lectBloq++; await traba; return { stdout: '{"cantidad":0}' }; }, ahora: () => AHORA });
-    const v1 = MS.mesa(dVuelo), v2 = MS.mesa(dVuelo, { fresco: true });
+    const v1 = mesaW(dVuelo), v2 = mesaW(dVuelo, { fresco: true });
     soltar(); const [rv1, rv2] = await Promise.all([v1, v2]);
     check('una lectura en vuelo se comparte: dos pedidos a la vez devuelven la misma promesa y leen UNA vez', v1 === v2 && rv1 === rv2 && lectBloq === 1);
+    /* ===== Fase 2 · preparar sin ejecutar ===== */
+    const ARM = (r) => todos(r).filter((i) => i.operacion);
+    const unSeguro = ['JUJUY BASQUET', 'San Martín (C)', "D'Alessandro", 'Peñarol', 'Equipo 2.0-B_x'];
+    check('nombreSeguro acepta «JUJUY BASQUET», «San Martín (C)» y «D\'Alessandro» (y ñ, dígitos, . - _)', unSeguro.every((n) => MS.nombreSeguro(n)));
+    const raros = ['a"b', 'a$b', 'a`b', 'a;b', 'a|b', 'a&b', 'a>b', 'a<b', 'a\nb', 'a\rb', 'x'.repeat(61), '', 'a\\b', null, 5];
+    check('nombreSeguro rechaza " $ ` ; | & > < , saltos de línea, el vacío, más de 60 caracteres y lo que no es texto', raros.every((n) => MS.nombreSeguro(n) === false));
+    check('nombreSeguro acepta exactamente 60 caracteres', MS.nombreSeguro('x'.repeat(60)) === true);
+
+    const HOY = new Date('2026-11-27T12:00:00Z'); // 09:00 en Argentina
+    const en = (hAR, m) => new Date(Date.UTC(2026, 10, 27, hAR + 3, m)); // hora AR → UTC
+    const gs = (c, a) => MS.guardasIngesta(c, a);
+    const estados = (c, a) => gs(c, a).map((g) => g.estado).join(',');
+    check('guardasIngesta · sin candado y a las 09:00 AR: todo ok', estados(null, HOY) === 'ok,ok');
+    check('guardasIngesta · candado fresco (20 min): bloquea', gs({ mtimeMs: HOY.getTime() - 20 * 60000 }, HOY)[0].estado === 'bloquea' && /en curso/.test(gs({ mtimeMs: HOY.getTime() - 20 * 60000 }, HOY)[0].texto));
+    check('guardasIngesta · candado colgado (90 min): mirar, no bloquea', gs({ mtimeMs: HOY.getTime() - 90 * 60000 }, HOY)[0].estado === 'mirar' && /colgado/.test(gs({ mtimeMs: HOY.getTime() - 90 * 60000 }, HOY)[0].texto));
+    check('guardasIngesta · 01:50 AR (a 10 min de las 02:00): mirar', estados(null, en(1, 50)) === 'ok,mirar');
+    check('guardasIngesta · 09:50 AR (a 10 min de las 10:00): mirar', estados(null, en(9, 50)) === 'ok,mirar');
+    check('guardasIngesta · 12:00 AR: ok', estados(null, en(12, 0)) === 'ok,ok');
+    check('guardasIngesta · el borde de 15 min entra y el de 16 no (02:15 sí, 02:16 no)', estados(null, en(2, 15)) === 'ok,mirar' && estados(null, en(2, 16)) === 'ok,ok');
+    check('guardasIngesta · usa la hora de Argentina (UTC-3), no la UTC: a las 02:00 UTC (23:00 AR) está ok', estados(null, new Date('2026-11-27T02:00:00Z')) === 'ok,ok');
+
+    const CTX = { candado: null, ahora: HOY };
+    const dCic = { club: 'club1', categoria: 'cat1', equipo: 'EQ X', ciclo: 1 };
+    const oC = MS.operacion('ciclo', dCic, CTX);
+    check('operacion(ciclo) · ensayo con informe y publicar (sin --enviar), --ciclo con el MISMO número que la mesa', oC.pasos[0].comando === 'node server/bin/ciclos.js informe --club club1 --categoria cat1 --equipo "EQ X" --ciclo 1 --salida contenido/ciclos-informes' && oC.pasos[1].comando === 'node server/bin/ciclos.js publicar --club club1 --categoria cat1 --equipo "EQ X" --ciclo 1' && !oC.pasos[0].escribe && !oC.pasos[1].escribe);
+    check('operacion(ciclo) · el paso real es el modal del panel: escribe, sin comando de shell y avisa que sellar no se deshace', oC.pasos[2].escribe === true && oC.pasos[2].comando === '' && /NO se deshace/.test(oC.pasos[2].nota) && /Sellar, publicar y enviar/.test(oC.pasos[2].nota));
+    check('operacion(ciclo) · trae la skill sugerida y la guarda «el OK para sellar no es OK para mandar»', oC.skill === '/cerrar-ciclo club1 cat1 "EQ X" 1' && oC.guardas.some((g) => /OK para sellar no es el OK para mandar/.test(g.texto)));
+    const oCb = MS.operacion('ciclo', dCic, { candado: { mtimeMs: HOY.getTime() - 10 * 60000 }, ahora: HOY });
+    check('operacion(ciclo) · con una corrida de ingesta en curso hay una guarda que bloquea', oCb.guardas.some((g) => g.estado === 'bloquea'));
+    check('operacion(ciclo) · cada paso lleva etiqueta, comando, escribe y nota; cada guarda, texto y estado válido', oC.pasos.every((p) => typeof p.etiqueta === 'string' && 'comando' in p && typeof p.escribe === 'boolean' && 'nota' in p) && oC.guardas.every((g) => g.texto && ['ok', 'bloquea', 'mirar'].includes(g.estado)) && ['id', 'titulo', 'queHace', 'pasos', 'guardas', 'skill'].every((k) => k in oC));
+    const oRaro = MS.operacion('ciclo', Object.assign({}, dCic, { equipo: 'EQ"; calc & echo $(x)' }), CTX);
+    check('operacion(ciclo) con un nombre raro: SIN pasos de shell y con una guarda que bloquea, y el nombre no aparece en ningún lado', oRaro.pasos.length === 0 && oRaro.guardas.some((g) => g.estado === 'bloquea' && /caracteres raros/.test(g.texto)) && !JSON.stringify(oRaro).includes('calc'));
+    check('operacion(ciclo) · club o categoría raros también cortan, y un ciclo no entero también', MS.operacion('ciclo', Object.assign({}, dCic, { club: 'a b;c' }), CTX).pasos.length === 0 && MS.operacion('ciclo', Object.assign({}, dCic, { categoria: '$(x)' }), CTX).pasos.length === 0 && MS.operacion('ciclo', Object.assign({}, dCic, { ciclo: '1; ls' }), CTX).pasos.length === 0);
+
+
+    /* ===== Vuelta 2 · nombres, agrupado, guardas frescas ===== */
+    const enNFD = 'Mart' + 'i\u0301' + 'n';
+    check('nombreSeguro rechaza el guion inicial: «--enviar» y «-x» serían banderas del script', MS.nombreSeguro('--enviar') === false && MS.nombreSeguro('-x') === false && MS.nombreSeguro('EQ-X') === true);
+    const sinPasos = (o) => o.pasos.length === 0 && o.guardas.some((g) => g.estado === 'bloquea');
+    check('operacion(ciclo) · equipo «--enviar» o «-x»: sin pasos de shell y con guarda que bloquea', sinPasos(MS.operacion('ciclo', Object.assign({}, dCic, { equipo: '--enviar' }), CTX)) && sinPasos(MS.operacion('ciclo', Object.assign({}, dCic, { equipo: '-x' }), CTX)));
+    check('operacion(ciclo) · club «--enviar» o «-x»: sin pasos de shell y con guarda que bloquea', sinPasos(MS.operacion('ciclo', Object.assign({}, dCic, { club: '--enviar' }), CTX)) && sinPasos(MS.operacion('ciclo', Object.assign({}, dCic, { club: '-x' }), CTX)));
+    check('operacion(ciclo) · categoría «--enviar» o «-x»: sin pasos de shell y con guarda que bloquea', sinPasos(MS.operacion('ciclo', Object.assign({}, dCic, { categoria: '--enviar' }), CTX)) && sinPasos(MS.operacion('ciclo', Object.assign({}, dCic, { categoria: '-x' }), CTX)));
+    check('operacion(ciclo) · club «San (Get-Date)» y «a b»: sin pasos de shell y con guarda que bloquea (van sin comillas)', sinPasos(MS.operacion('ciclo', Object.assign({}, dCic, { club: 'San (Get-Date)' }), CTX)) && sinPasos(MS.operacion('ciclo', Object.assign({}, dCic, { club: 'a b' }), CTX)));
+    check('operacion(ciclo) · categoría «San (Get-Date)» y «a b»: sin pasos de shell y con guarda que bloquea', sinPasos(MS.operacion('ciclo', Object.assign({}, dCic, { categoria: 'San (Get-Date)' }), CTX)) && sinPasos(MS.operacion('ciclo', Object.assign({}, dCic, { categoria: 'a b' }), CTX)));
+    check('slugSeguro: acepta «jujuy», «u21», «liga-argentina»; rechaza mayúsculas, espacios, paréntesis, guion inicial y más de 60', ['jujuy', 'u21', 'liga-argentina'].every((x) => MS.slugSeguro(x)) && ['Jujuy', 'a b', 'a(b)', '-x', '--enviar', '', 'a'.repeat(61), null].every((x) => MS.slugSeguro(x) === false));
+    check('nombreSeguro acepta «Martín» en NFD (y es el mismo nombre que en NFC)', enNFD !== 'Martín' && MS.nombreSeguro(enNFD) === true);
+    const oNfd = MS.operacion('ciclo', Object.assign({}, dCic, { equipo: enNFD }), CTX);
+    check('operacion(ciclo) · el equipo en NFD sale en NFC en el comando y en la skill (no se usa el valor sin normalizar)', oNfd.pasos.length === 3 && oNfd.pasos[1].comando.includes('"Martín"') && !oNfd.pasos[1].comando.includes(enNFD) && oNfd.skill.includes('"Martín"') && !oNfd.skill.includes(enNFD));
+    check('operacion(ciclo) · informe con --salida a la carpeta que git ignora y nota que lo dice', /--salida contenido\/ciclos-informes$/.test(oC.pasos[0].comando) && /contenido\/ciclos-informes/.test(oC.pasos[0].nota) && /git ignora/.test(oC.pasos[0].nota) && oC.pasos[0].escribe === false && /no toca KV ni manda nada/i.test(oC.pasos[0].nota));
+    check('operacion(ciclo) · el ensayo de publicar avisa de SIN_GESTION (guardar y auditar en Comparativa) y de que imprime mails: no compartirlos', /SIN_GESTION/.test(oC.pasos[1].nota) && /Comparativa → Ciclos · gestión/.test(oC.pasos[1].nota) && /mails de los destinatarios/.test(oC.pasos[1].nota) && /no los compartas ni los pegues en un chat/.test(oC.pasos[1].nota));
+    check('el informe de ciclos no escribe en la raíz del repo: la carpeta de --salida está en el .gitignore', (() => { try { return /ciclos-informes|^contenido\/?$/m.test(fs.readFileSync('.gitignore', 'utf8')); } catch (e) { return false; } })());
+
+    /* Agrupado: UNA fila por equipo */
+    const stubN = (n) => ({
+      ventanas: () => Array.from({ length: n }, (_, i) => ({ numero: i, cerrado: true, desde: '2026-10-' + String(i + 1).padStart(2, '0'), hasta: '2026-10-' + String(i + 2).padStart(2, '0') })),
+      armarVentana: (p, c) => ({ meta: { tipo: 'ciclo', numero: c.numero, n: 4 }, num: c.numero }),
+      claveSello: (m) => 'c' + m.numero + 'n' + m.n,
+      auditar: () => ({ apto: true, items: [] }),
+    });
+    const g1 = MS.itemsCiclosEquipo(stubN(1), {}, {}, 'eq-x', 'club1', 'cat1', 'EQ X');
+    check('agrupado · con UN solo ciclo listo el título es el de siempre', g1.decidiHoy.length === 1 && g1.decidiHoy[0].titulo === 'Ciclo 0 de EQ X listo para cerrar');
+    const g10 = MS.itemsCiclosEquipo(stubN(10), {}, {}, 'eq-x', 'club1', 'cat1', 'EQ X');
+    check('agrupado · diez ciclos listos son UNA fila: «EQ X · 10 ciclos listos para cerrar (0 a 9)»', g10.decidiHoy.length === 1 && g10.decidiHoy[0].titulo === 'EQ X · 10 ciclos listos para cerrar (0 a 9)');
+    MS.armarOperaciones(g10.decidiHoy, CTX);
+    check('agrupado · la operación es la del ciclo MÁS VIEJO sin sello y el detalle lista los números y las fechas del primero', g10.decidiHoy[0].operacion.pasos[1].comando.endsWith('--ciclo 0') && /Ciclos 0, 1, 2, 3, 4, 5, 6, 7, 8, 9/.test(g10.decidiHoy[0].detalle) && /01\/10\/2026 al 02\/10\/2026/.test(g10.decidiHoy[0].detalle) && g10.decidiHoy[0].comando === '/cerrar-ciclo club1 cat1 "EQ X" 0');
+    const gSel = MS.itemsCiclosEquipo(stubN(10), {}, { 'eq-x|c0n4': 1, 'eq-x|c1n4': 1, 'eq-x|c2n4': 1 }, 'eq-x', 'club1', 'cat1', 'EQ X');
+    MS.armarOperaciones(gSel.decidiHoy, CTX);
+    check('agrupado · con los tres primeros sellados, la fila dice «7 ciclos (3 a 9)» y prepara el 3', gSel.decidiHoy.length === 1 && /7 ciclos listos para cerrar \(3 a 9\)/.test(gSel.decidiHoy[0].titulo) && gSel.decidiHoy[0].operacion.pasos[1].comando.endsWith('--ciclo 3'));
+    const gA = MS.itemsCiclosEquipo(stubN(3), {}, {}, 'eq-a', 'club1', 'cat1', 'EQ A'), gB = MS.itemsCiclosEquipo(stubN(5), {}, {}, 'eq-b', 'club1', 'cat2', 'EQ B');
+    check('agrupado · dos equipos son dos filas, cada una con su operación', gA.decidiHoy.length === 1 && gB.decidiHoy.length === 1 && /EQ A · 3 ciclos/.test(gA.decidiHoy[0].titulo) && /EQ B · 5 ciclos/.test(gB.decidiHoy[0].titulo));
+    const stubNo = Object.assign(stubN(4), { auditar: (c) => (c.num === 1 ? { apto: false, items: [{ nivel: 'error', texto: 'Falta algo.' }] } : { apto: true, items: [] }) });
+    const gN = MS.itemsCiclosEquipo(stubNo, {}, {}, 'eq-x', 'club1', 'cat1', 'EQ X');
+    check('agrupado · el «cerrado pero NO apto» sigue individual en Datos y no entra en la cuenta del grupo', gN.datos.length === 1 && /Ciclo 1 de EQ X cerrado pero NO apto/.test(gN.datos[0].titulo) && gN.decidiHoy.length === 1 && /3 ciclos listos para cerrar \(0, 2 y 3\)/.test(gN.decidiHoy[0].titulo) && !/0 a 3/.test(gN.decidiHoy[0].titulo));
+    check('agrupado · un no apto POSTERIOR al preparado no agrega el aviso de «sigue abierto» y el detalle ya no dice «en orden»', !/sigue abierto/.test(gN.decidiHoy[0].detalle) && !/en orden/.test(gN.decidiHoy[0].detalle) && /el más viejo, el 0/.test(gN.decidiHoy[0].detalle));
+    const stubNo0 = Object.assign(stubN(4), { auditar: (c) => (c.num === 0 ? { apto: false, items: [{ nivel: 'error', texto: 'Falta algo.' }] } : { apto: true, items: [] }) });
+    const gN0 = MS.itemsCiclosEquipo(stubNo0, {}, {}, 'eq-x', 'club1', 'cat1', 'EQ X');
+    MS.armarOperaciones(gN0.decidiHoy, CTX);
+    check('agrupado · con un no apto ANTERIOR al preparado: título «(1 a 3)», prepara el 1 y el detalle dice «El ciclo 0 sigue abierto y no es apto: ver Datos.»', gN0.decidiHoy.length === 1 && /3 ciclos listos para cerrar \(1 a 3\)/.test(gN0.decidiHoy[0].titulo) && /El ciclo 0 sigue abierto y no es apto: ver Datos\./.test(gN0.decidiHoy[0].detalle) && gN0.decidiHoy[0].operacion.pasos[1].comando.endsWith('--ciclo 1') && gN0.datos.length === 1);
+
+    const oM = MS.operacion('manuales', {}, CTX);
+    check('operacion(manuales) · ensayo = el control en simulación; después publicar desde el Panel Master y, aparte, la alerta real', oM.pasos[0].comando === 'node server/bin/carga-manual.js control' && !oM.pasos[0].escribe && oM.pasos[1].escribe && oM.pasos[1].comando === '' && /Panel Master/.test(oM.pasos[1].nota) && oM.pasos[2].comando === 'node server/bin/carga-manual.js control --real' && oM.pasos[2].escribe && /Calendar/.test(oM.pasos[2].nota));
+    check('operacion(manuales) · guardas: publicar reemplaza la lista entera; sin empates y nombres idénticos', oM.guardas.some((g) => /reemplaza la lista entera/.test(g.texto)) && oM.guardas.some((g) => /empates/.test(g.texto) && /idénticos/.test(g.texto)) && oM.skill === '/fecha-manual');
+    const oK = MS.operacion('cola', {}, CTX);
+    check('operacion(cola) · ensayo «importar --ensayo», real «npm run canva» y la guarda del commit y push al repo público', oK.pasos[0].comando === 'node centro-mando/canva.js importar --ensayo' && !oK.pasos[0].escribe && oK.pasos[1].comando === 'npm run canva' && oK.pasos[1].escribe && oK.guardas.some((g) => /commit y push de placas-tmp/.test(g.texto) && g.estado !== 'ok'));
+    const oA = MS.operacion('auditor-viejo', {}, CTX);
+    check('operacion(auditor viejo) · un solo paso «npm run auditar» que no escribe y no hay paso real', oA.pasos.length === 1 && oA.pasos[0].comando === 'npm run auditar' && oA.pasos[0].escribe === false && /un minuto/.test(oA.pasos[0].nota));
+    const oR = MS.operacion('arreglo', { comando: 'node server/bin/x.js --fix' }, CTX);
+    check('operacion(arreglo) · el arreglo tal cual, como paso que escribe, con la guarda que remite a OPERACION_ECOSISTEMA.md', oR.pasos.length === 1 && oR.pasos[0].comando === 'node server/bin/x.js --fix' && oR.pasos[0].escribe === true && oR.guardas.some((g) => /OPERACION_ECOSISTEMA\.md/.test(g.texto)));
+    check('operacion · un tipo desconocido o un arreglo sin comando devuelve null', MS.operacion('inventado', {}, CTX) === null && MS.operacion('arreglo', {}, CTX) === null);
+
+    /* Una mesa de fixture con las cinco operaciones, armadas por mesa() con el candado real de la carpeta (10 min: fresco) */
+    const exOps = async () => ({ stdout: JSON.stringify({ cantidad: 2, fechaRevisada: '2026-11-26', fallaron: [] }) });
+    const depsOps = Object.assign({}, depsReales, { exec: exOps, kv: kvF, catalogo: catF, pbp: pbpF, ciclos: STUB });
+    const rOps = await mesaT(depsOps);
+    const rOpsV = await mesaT(Object.assign({}, depsOps, { ahora: () => new Date('2026-12-20T12:00:00Z') }));
+    const opsTodas = ARM(rOps).concat(ARM(rOpsV)).map((i) => i.operacion);
+    const idsOps = Array.from(new Set(opsTodas.map((o) => o.id))).sort().join(',');
+    check('mesa() arma operaciones de los cinco tipos (ciclo, manuales, cola, auditor viejo y arreglo)', idsOps === 'arreglo,auditor,ciclo,cola,manuales');
+    check('el ítem accionable conserva su comando de siempre y suma operacion', ARM(rOps).every((i) => i.comando) && ARM(rOps).every((i) => typeof i.operacion.titulo === 'string'));
+    const ensayos = opsTodas.flatMap((o) => o.pasos).filter((p) => p.escribe === false);
+    check('NINGÚN paso de ensayo (de todas las operaciones armadas) lleva --real, --confirmar, --enviar ni --reintentar', ensayos.length >= 7 && ensayos.every((p) => !/--(real|confirmar|enviar|reintentar)\b/.test(p.comando)));
+    check('los pasos que escriben quedan marcados escribe:true: «--real» solo aparece en uno que escribe', opsTodas.flatMap((o) => o.pasos).filter((p) => /--real/.test(p.comando)).every((p) => p.escribe === true));
+    const opCicloMesa = ARM(rOps).find((i) => i.origen === 'ciclos').operacion;
+    check('el candado de la carpeta (10 min) llega a las guardas del ciclo: bloquea', opCicloMesa.guardas.some((g) => g.estado === 'bloquea') && opCicloMesa.pasos[0].comando.includes('--ciclo 1'));
+    const rSinLock = await mesaT(Object.assign({}, depsOps, { ingesta: pth.join(base, 'ing-no-existe') }));
+    const gCic = (r) => ARM(r).find((i) => i.origen === 'ciclos').operacion.guardas;
+    check('carpeta de la ingesta AUSENTE: no es «sin corrida» (ok): la guarda pasa a «mirar» y nombra la carpeta', !gCic(rSinLock).some((g) => g.estado === 'bloquea') && gCic(rSinLock)[0].estado === 'mirar' && /No encontré la carpeta de la ingesta \(.*ing-no-existe\): no puedo saber si hay una corrida\./.test(gCic(rSinLock)[0].texto));
+    check('carpeta ausente: la fuente «candado» lo dice como riesgo, no «Sin corrida»', rSinLock.fuentes.candado.ok === true && !JSON.stringify(rSinLock).includes('Sin corrida de ingesta') && todos(rSinLock).some((i) => i.origen === 'candado' && i.gravedad === 'riesgo' && /ing-no-existe/.test(i.detalle)));
+    mk('ing-vacia', 'salida');
+    const rVacia = await mesaT(Object.assign({}, depsOps, { ingesta: pth.join(base, 'ing-vacia') }));
+    check('carpeta presente y sin lock (ENOENT): ahí sí «sin corrida», guarda ok', gCic(rVacia)[0].estado === 'ok' && /No hay una corrida/.test(gCic(rVacia)[0].texto) && rVacia.correSolo.some((i) => i.origen === 'candado' && /Sin corrida/.test(i.titulo)));
+    const fsEperm = Object.assign({}, fs, { statSync: (p, ...r) => { if (/\.corrida\.lock$/.test(String(p))) { const e = new Error('EPERM: sin permiso'); e.code = 'EPERM'; throw e; } return fs.statSync(p, ...r); } });
+    const rEperm = await mesaT(Object.assign({}, depsOps, { ingesta: pth.join(base, 'ing-vacia'), fs: fsEperm }));
+    check('un error distinto de ENOENT (EPERM) con la carpeta presente: guarda «mirar», nunca ok', gCic(rEperm)[0].estado === 'mirar' && /no puedo saber/.test(gCic(rEperm)[0].texto) && !rEperm.correSolo.some((i) => /Sin corrida/.test(i.titulo)));
+    check('sin candado (carpeta presente), las guardas del ciclo no bloquean', !gCic(rVacia).some((g) => g.estado === 'bloquea'));
+    let statsLock = 0;
+    const fsContando = Object.assign({}, fs, { statSync: (p, ...r) => { if (/\.corrida\.lock$/.test(String(p))) statsLock++; return fs.statSync(p, ...r); } });
+    await mesaT(Object.assign({}, depsOps, { fs: fsContando }));
+    check('el candado se lee UNA sola vez por lectura de la mesa (la fuente y las guardas comparten el dato)', statsLock === 1);
+    check('el JSON de la mesa no arrastra el pedido interno (_op) de las operaciones', !JSON.stringify(rOps).includes('_op'));
+    const kvRaro = { configurado: () => true, leerHash: kvF.leerHash, leerCampos: async (k, campos) => { const o = {}; if (!/^sgadd:ciclos:/.test(k)) campos.forEach((c) => { o[c] = paqF('RARO'); }); return o; } };
+    const rRaro = await mesaT(Object.assign({}, depsOps, { kv: kvRaro, catalogo: { cargar: catF.cargar, resolver: (c, club, slug) => Object.assign(catF.resolver(c, club, slug), { equipoPropio: slug === 'cat1' ? 'EQ"; boom' : '' }) } }));
+    const opRaro = ARM(rRaro).find((i) => i.origen === 'ciclos');
+    check('de punta a punta: un equipo con nombre raro en el catálogo sale con la operación sin pasos de shell y con guarda que bloquea', opRaro && opRaro.operacion.pasos.length === 0 && opRaro.operacion.guardas.some((g) => g.estado === 'bloquea'));
+    /* Guardas frescas aunque el resto venga de caché */
+    {
+      const ingC = mk('ing-cache', 'salida'); const lockC = pth.join(ingC, '.corrida.lock');
+      const dCa = Object.assign({}, depsOps, { sinCache: false, ingesta: pth.join(base, 'ing-cache') });
+      MS.vaciarCache();
+      const rC1 = await mesaT(dCa);
+      const opC1 = ARM(rC1).find((i) => i.origen === 'ciclos').operacion;
+      fs.writeFileSync(lockC, ''); fs.utimesSync(lockC, new Date(AHORA - 5 * 60000), new Date(AHORA - 5 * 60000));
+      const rC2 = await mesaT(dCa);
+      const opC2 = ARM(rC2).find((i) => i.origen === 'ciclos').operacion;
+      check('guardas frescas · la primera lectura (sin candado) no bloquea', rC1.deCache === false && !opC1.guardas.some((g) => g.estado === 'bloquea'));
+      check('guardas frescas · con caché válida y el candado que aparece después, la segunda lectura trae la guarda que bloquea', rC2.deCache === true && opC2.guardas.some((g) => g.estado === 'bloquea'));
+      check('guardas frescas · la caché misma no se contamina (la copia cambia, el original no) y trae «guardasA» para el cartel del panel', !ARM(rC1).find((i) => i.origen === 'ciclos').operacion.guardas.some((g) => g.estado === 'bloquea') && typeof rC2.guardasA === 'string' && !isNaN(new Date(rC2.guardasA)) && typeof rC1.guardasA === 'string');
+      const candC2 = rC2.correSolo.filter((i) => i.origen === 'candado'), candC1 = rC1.correSolo.filter((i) => i.origen === 'candado');
+      check('candado fresco · con caché válida, el ítem «candado» de Corre solo también se actualiza (en curso) y no queda el viejo', rC2.deCache === true && candC2.length === 1 && /en curso/.test(candC2[0].titulo) && !rC2.correSolo.some((i) => /Sin corrida/.test(i.titulo)));
+      check('candado fresco · la caché no se muta: la primera respuesta sigue con «Sin corrida»', candC1.length === 1 && /Sin corrida/.test(candC1[0].titulo));
+      fs.rmSync(lockC, { force: true });
+      const rC3 = await mesaT(dCa);
+      check('guardas frescas · si el candado desaparece, la lectura de caché vuelve a no bloquear', rC3.deCache === true && !ARM(rC3).find((i) => i.origen === 'ciclos').operacion.guardas.some((g) => g.estado === 'bloquea'));
+      MS.vaciarCache();
+    }
+
+
+    /* los 3 menores de la Fase 1 */
+    check('menor B.2 · un 502 del fixture con «fallaron» no descarta la lista: va al detalle y el ítem es riesgo', await (async () => {
+      const ex502 = async () => { const e = new Error('salió 1'); e.stdout = JSON.stringify({ ok: false, codigo: 'FIXTURE_502', mensaje: 'La fuente contestó 502.', fallaron: [{ zona: 'zona-q', mensaje: 'no contesta' }, 'zona-r'] }); throw e; };
+      const r = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: ex502, env: {}, sinCache: true, ahora: () => AHORA });
+      const it = r.datos.find((i) => i.origen === 'manuales');
+      return r.fuentes.manuales.ok === true && it && it.gravedad === 'riesgo' && /FIXTURE_502/.test(it.titulo) && /zona-q: no contesta/.test(it.detalle) && /zona-r/.test(it.detalle);
+    })());
+    check('menor B.2 · sin «fallaron» el aviso sigue siendo info', await (async () => {
+      const r = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: exGe, env: {}, sinCache: true, ahora: () => AHORA });
+      return r.datos.find((i) => i.origen === 'manuales').gravedad === 'info';
+    })());
+    check('menor B.3 · los sellos se leen con leerCampos y SOLO los campos de los ciclos cerrados del equipo (sin el abierto), una lectura por categoría', leidosS.length > 0 && leidosS.every((l) => l === 'sgadd:ciclos:club1:cat1#eq-x|c0n4,eq-x|c1n4,eq-x|c2n4'));
+    check('menor B.3 · camposSellos devuelve un campo por ciclo cerrado: `<campo>|<claveSello>`', MS.camposSellos(STUB, {}, 'eq-x', AHORA).join(',') === 'eq-x|c0n4,eq-x|c1n4,eq-x|c2n4');
+    check('menor B.3 · el KV falso lanza si se lee un hash entero: con leerHash la fuente «ciclos» habría caído', rF.fuentes.ciclos.ok === true && !/NO se lee/.test(rF.fuentes.ciclos.error || ''));
+
     MS.vaciarCache();
-    check('NINGUNA llamada a mesa() de esta sección usó el Upstash real: sin kv propio, «ciclos» cayó contra el kv de guardia', resultadosMesa.length > 15 && resultadosMesa.filter((x) => !x.kvPropio).every((x) => x.r.fuentes.ciclos.ok === false && /KV/.test(x.r.fuentes.ciclos.error) && !/GUARDIA/.test(x.r.fuentes.ciclos.error)));
+    const sinKvPropio =resultadosMesa.filter((x) => x.usaGuardia);
+    check('NINGUNA llamada a mesa() de esta sección usó el Upstash real: cada una sin kv propio consultó la guardia (usos = llamadas) y ningún error de fuente dice GUARDIA', resultadosMesa.length > 15 && guardia.usos === new Set(sinKvPropio.filter((x) => !x.r.deCache).map((x) => x.r)).size /* lecturas reales distintas, incluida la en vuelo (una sola para dos pedidos) */ && resultadosMesa.every((x) => Object.keys(x.r.fuentes).every((k) => !/GUARDIA/.test(String(x.r.fuentes[k].error || '')))));
+    {
+      /* El check de arriba tiene que FALLAR si la guardia se activa: con una guardia que dice «configurado» y un catálogo falso, la lectura del KV delata GUARDIA. */
+      const kvViva = Object.assign({}, guardia, { configurado: () => true });
+      const rG2 = await MS.mesa({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: async () => ({ stdout: '{"cantidad":0}' }), env: {}, sinCache: true, ahora: () => AHORA, kv: kvViva, catalogo: catF, pbp: pbpF, ciclos: STUB });
+      check('menor B.1 · la guardia delata el uso del KV: si se la fuerza a «configurada», fuentes.ciclos.error dice GUARDIA', rG2.fuentes.ciclos.ok === false && /GUARDIA/.test(rG2.fuentes.ciclos.error));
+    }
 
     /* Solo lectura, privacidad y el cableado */
     const srcMesa = fs.readFileSync('centro-mando/mesa.js', 'utf8'), srcUi = fs.readFileSync('centro-mando/mesa-ui.js', 'utf8'), srcSrv = fs.readFileSync('centro-mando/servidor.js', 'utf8');
     const docMesa = fs.readFileSync('docs/claude/centro-mando-y-contenido.md', 'utf8');
-    check('mesa.js no escribe: sin writeFile, appendFile, escribir(, HSET, --real, --confirmar, --enviar, unlink ni rm', !/writeFile|appendFile|escribir\(|HSET|--real|--confirmar|--enviar|unlink|\brm\b|rmSync/.test(srcMesa));
+    /* El bloque <operaciones> es lo único que nombra banderas de escritura (son TEXTO para copiar); el resto del fuente no puede. */
+    const srcMesaSinOps = srcMesa.replace(/\/\* <operaciones> \*\/[\s\S]*?\/\* <\/operaciones> \*\//, '');
+    check('el bloque <operaciones> existe y se recorta del fuente (si no, el check de abajo no vigilaría nada)', srcMesa.length - srcMesaSinOps.length > 1000);
+    check('mesa.js no escribe: sin writeFile, appendFile, escribir(, HSET, --real, --confirmar, --enviar, unlink ni rm (fuera del bloque de operaciones)', !/writeFile|appendFile|escribir\(|HSET|--real|--confirmar|--enviar|unlink|\brm\b|rmSync/.test(srcMesaSinOps));
+    check('mesa.js: el bloque de operaciones no ejecuta nada ni toca el disco (sin exec, spawn, fs ni require)', (() => { const b = srcMesa.slice(srcMesa.indexOf('/* <operaciones> */'), srcMesa.indexOf('/* </operaciones> */')); return !/exec|spawn|\bfs\.|require\(|fetch|process\./.test(b); })());
+    check('mesa.js: el único exec de la mesa sigue siendo el control de manuales (ARGS_MANUALES) y PowerShell', (srcMesa.match(/D\.exec\(/g) || []).length === 2 && /D\.exec\(process\.execPath, ARGS_MANUALES/.test(srcMesa) && /D\.exec\('powershell'/.test(srcMesa) && JSON.stringify(MS.ARGS_MANUALES) === '["server/bin/carga-manual.js","control"]');
     check('mesa.js no registra ninguna ruta POST y solo expone /api/mesa y /mesa-ui.js', !/\.post\(|\.put\(|\.delete\(|\.patch\(/.test(srcMesa) && /a\.get\('\/api\/mesa'/.test(srcMesa) && !/\/api\/mesa[^']*'.*post/i.test(srcSrv));
     check('el servidor monta la mesa junto a la agencia', /require\('\.\/mesa\.js'\)\.montar\(a, ruta\)/.test(srcSrv));
     const repoPrivado = new RegExp(['motorstats', 'cerebro'].join('-'), 'i');
     const sec183 = docMesa.slice(docMesa.indexOf('## 183'));
     check('ni mesa.js, ni mesa-ui.js, ni la doc nueva nombran el repo privado del cerebro', !repoPrivado.test(srcMesa) && !repoPrivado.test(srcUi) && docMesa.indexOf('## 183') >= 0 && !repoPrivado.test(sec183));
-    check('mesa-ui.js pasa por esc() el título, el detalle y el comando', /esc\(it\.titulo\)/.test(srcUi) && /esc\(it\.detalle\)/.test(srcUi) && /esc\(it\.comando\)/.test(srcUi) && !/innerHTML[^;]*\+\s*it\.(titulo|detalle|comando)\b/.test(srcUi));
-    check('mesa-ui.js no tiene botones que ejecuten: solo «Actualizar», que pide ?fresco=1 por GET', (srcUi.match(/<button/g) || []).length === 1 && /\?fresco=1/.test(srcUi) && !/api\('[^']*',\s*\{/.test(srcUi));
+    check('mesa-ui.js pasa por esc() el título, el detalle, el comando, las guardas y las notas', /esc\(it\.titulo\)/.test(srcUi) && /esc\(it\.detalle\)/.test(srcUi) && /esc\(p\.comando\)/.test(srcUi) && /esc\(g\.texto\)/.test(srcUi) && /esc\(p\.nota\)/.test(srcUi) && /esc\(p\.etiqueta\)/.test(srcUi) && /esc\(op\.skill\)/.test(srcUi) && !/innerHTML[^;]*\+\s*(it|p|g|op)\.(titulo|detalle|comando|texto|nota|skill)\b/.test(srcUi));
+    check('mesa-ui.js no ejecuta ni escribe: sin fetch(, sin api() con cuerpo (POST), sin eval ni new Function, y el único pedido es GET /api/mesa', !/fetch\(/.test(srcUi) && !/api\([^)]*,/.test(srcUi) && !/\beval\(|new Function|method\s*:\s*['"]POST/i.test(srcUi) && (srcUi.match(/\bawait api\(/g) || []).length === 1 && /await api\('\/api\/mesa'/.test(srcUi) && /\?fresco=1/.test(srcUi));
+    check('mesa-ui.js: el panel «Preparar» es un diálogo modal con el aviso «no ejecuta nada», foco al abrir y Esc', /setAttribute\('role', 'dialog'\)/.test(srcUi) && /setAttribute\('aria-modal', 'true'\)/.test(srcUi) && /Este panel no ejecuta nada/.test(srcUi) && /\$\('ms-cerrar'\)\.focus\(\)/.test(srcUi) && /'Escape'/.test(srcUi));
+    check('mesa-ui.js: los pasos se rotulan «Ensayo · no escribe» y «Escribe · espera tu OK», con copiar por clipboard y respaldo', /Ensayo · no escribe/.test(srcUi) && /Escribe · espera tu OK/.test(srcUi) && /navigator\.clipboard\.writeText/.test(srcUi) && /selectNodeContents/.test(srcUi) && /Bloqueado: /.test(srcUi));
+    check('mesa-ui.js: «Datos» son <details> sin open, «Decidí hoy» corta en 8 con «Ver N más» y la grilla es 2fr 1fr desde 1000 px', /<details class="ms-grupo">/.test(srcUi) && !/<details[^>]*\bopen\b/.test(srcUi) && /MS_TOPE = 8/.test(srcUi) && /slice\(0, MS_TOPE\)/.test(srcUi) && /Ver ' \+ esc\(lista\.length - vis\.length\) \+ ' más/.test(srcUi) && /min-width: 1000px[^}]*2fr 1fr/.test(srcUi));
+    check('mesa-ui.js: KPIs Rompe, Riesgo, Para decidir y Rutinas, con el filtro que se quita con otro clic', /msKpi\('rompe'/.test(srcUi) && /msKpi\('riesgo'/.test(srcUi) && /msKpi\('info', 'Para decidir'/.test(srcUi) && />Rutinas</.test(srcUi) && /MS\.filtro === b\.dataset\.kpi \? null/.test(srcUi));
+    check('mesa-ui.js: los comandos ya no van sueltos en las filas (msFila no los pinta)', (() => { const fn = srcUi.slice(srcUi.indexOf('function msFila'), srcUi.indexOf('function msKpi')); return !/comando/.test(fn) && /data-prep/.test(fn); })());
+    check('mesa-ui.js: targets táctiles de 40 px en Preparar y en las filas', /\.ms-prep \{[^}]*min-height:40px/.test(srcUi) && /\.ms-linea \{[^}]*min-height:40px/.test(srcUi));
+
+    check('mesa-ui.js: los títulos se cortan con ellipsis a 375 px: min-width:0 en .ms-fila, .ms-linea, .ms-tog y .ms-tit', ['\\.ms-fila', '\\.ms-linea', '\\.ms-tog', '\\.ms-tit'].every((c) => new RegExp(c + ' \\{[^}]*min-width:0').test(srcUi)) && /\.ms-tog \{[^}]*overflow:hidden/.test(srcUi) && /\.ms-tit \{[^}]*text-overflow:ellipsis/.test(srcUi));
+    const minH = (re) => { const m = srcUi.match(re); return m ? Number(m[1]) : 0; };
+    check('mesa-ui.js: targets de 40 px también en los chips de origen, «Copiar», «Ver N más» y los KPIs (selectores de la mesa)', minH(/\.ms-chips button \{[^}]*min-height:(\d+)px/) >= 40 && minH(/#ms-raiz \.ms-chico, #ms-drawer \.ms-chico \{[^}]*min-height:(\d+)px/) >= 40 && minH(/\.ms-kpi \{[^}]*min-height:(\d+)px/) >= 40 && /data-vermas="1"/.test(srcUi) && /class="ms-chico" data-vermas/.test(srcUi) && /class="ms-chico" data-copiar/.test(srcUi));
+    check('mesa-ui.js no toca el .chico global de index.html (lo usan otras pestañas): ni lo define ni lo usa en la mesa', !/\.chico\b/.test(srcUi.replace(/\.ms-chico/g, '')) && !/class="chico"/.test(srcUi) && /button\.chico \{ min-height: 32px/.test(fs.readFileSync('centro-mando/index.html', 'utf8')));
+    check('mesa-ui.js: el panel dice «Guardas calculadas a las HH:MM» con la hora de guardasA', /Guardas calculadas a las /.test(srcUi) && /MS\.m\.guardasA/.test(srcUi));
+    {
+      /* pintarMesa en la vm con un DOM mínimo: el foco se verifica en document.activeElement, no con un regex sobre el fuente. */
+      const vmf = require('vm');
+      const tro = srcUi.slice(srcUi.indexOf('const MS_ROTULO'), srcUi.indexOf('/* Tras «Actualizar»'));
+      const mkEl = (attrs) => { const e = { dataset: attrs || {}, focus() { doc.activeElement = e; } }; return e; };
+      const doc = { activeElement: null, els: [] };
+      const raiz = { set innerHTML(h) { this._h = h; const els = []; const re = /<button[^>]*data-(kpi|origen|tog)="([^"]*)"/g; let x; while ((x = re.exec(h))) els.push(mkEl({ [x[1]]: x[2] })); this.els = els; doc.els = els; doc.actualizar = mkEl({}); } };
+      doc.querySelector = (s) => { const m = s.match(/data-kpi="(\w+)"/); return m ? doc.els.find((e) => e.dataset.kpi === m[1]) || null : null; };
+      doc.querySelectorAll = (s) => (/data-origen/.test(s) ? doc.els.filter((e) => e.dataset.origen) : doc.els.filter((e) => e.dataset.tog));
+      const sandF = { document: doc, MS: { m: null, filtro: null, filtroOrigen: null, verTodas: false, ops: [], pasos: [] }, MS_TOPE: 8, Array, Object, Number, String, Math, isNaN, Date,
+        $: (id) => (id === 'ms-raiz' ? raiz : id === 'ms-actualizar' ? doc.actualizar : null), esc: (x) => String(x == null ? '' : x) };
+      vmf.runInNewContext(tro + '\nsandF_pintar = pintarMesa;', sandF);
+      const mm = { generado: '2026-11-28T12:00:00Z', fuentes: {}, correSolo: [], datos: [],
+        decidiHoy: Array.from({ length: 10 }, (_, i) => ({ origen: i % 2 ? 'ciclos' : 'tareas', gravedad: 'info', titulo: 'T' + i, detalle: '' })) };
+      sandF.sandF_pintar(mm, { kpi: 'info' });
+      const fKpi = doc.activeElement && doc.activeElement.dataset.kpi === 'info';
+      doc.activeElement = null; sandF.sandF_pintar(mm, { origen: 'ciclos' });
+      const fOri = doc.activeElement && doc.activeElement.dataset.origen === 'ciclos';
+      doc.activeElement = null; sandF.MS.verTodas = true; sandF.sandF_pintar(mm, { nueva: 8 });
+      const fMas = doc.activeElement === doc.els.filter((e) => e.dataset.tog)[8];
+      doc.activeElement = null; sandF.sandF_pintar(mm, { actualizar: true });
+      const fAct = doc.activeElement === doc.actualizar;
+      doc.activeElement = null; sandF.sandF_pintar(mm);
+      check('mesa-ui.js · foco real (pintarMesa en la vm): tras filtrar por KPI, por origen y tras «Ver N más» el foco cae en el botón equivalente / la fila nueva', !!fKpi && !!fOri && fMas);
+      check('mesa-ui.js · foco real: tras «Actualizar» (cargarMesa) el foco va a #ms-actualizar, y un pintado sin foco no roba el foco', fAct && doc.activeElement === null && /pintarMesa\(m, fresco \? \{ actualizar: true \}/.test(srcUi));
+    }
+    {
+      const vmx = require('vm');
+      const trozo = srcUi.slice(srcUi.indexOf('function msSanear'), srcUi.indexOf('/* ------------------------- el panel'));
+      const sand = { MS: { filtroOrigen: 'tareas', filtro: 'rompe' } };
+      vmx.runInNewContext(trozo + '\nsand_f = msSanear;', Object.assign(sand, {}));
+      const mA = { decidiHoy: [{ origen: 'ciclos', gravedad: 'info' }] };
+      sand.sand_f(mA);
+      const quedo = [sand.MS.filtroOrigen, sand.MS.filtro];
+      sand.MS.filtroOrigen = 'ciclos'; sand.MS.filtro = 'info'; sand.sand_f(mA);
+      check('mesa-ui.js · msSanear: tras Actualizar, el filtro por origen o gravedad que ya no tiene ítems se pone en null; el que sigue vigente se conserva', quedo[0] === null && quedo[1] === null && sand.MS.filtroOrigen === 'ciclos' && sand.MS.filtro === 'info');
+      check('mesa-ui.js: cargarMesa sanea el filtro antes de pintar', /msSanear\(m\); pintarMesa\(m[,)]/.test(srcUi));
+    }
     const html = fs.readFileSync('centro-mando/index.html', 'utf8');
     check('el index tiene la pestaña, su sección, el script y la carga', /data-tab="mesa"/.test(html) && /<section id="tab-mesa" role="tabpanel" hidden>/.test(html) && /\/mesa-ui\.js/.test(html) && /TAB === 'mesa'\) cargarMesa/.test(html));
     fs.rmSync(base, { recursive: true, force: true });
