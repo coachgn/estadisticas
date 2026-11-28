@@ -59,9 +59,15 @@ Lanzá `implementer` (sin `isolation`: el worktree ya existe) con:
 - el contenido de `plan.md`;
 - «Trabajás SOLO en `WT` = <ruta absoluta>. Todo Read/Edit/Write con rutas absolutas dentro de `WT`; todo comando
   Bash empieza con `cd "<WT>" &&`. No toques la carpeta principal del repo. No commitees.»
-- en la vuelta 2 o 3: la lista exacta de arreglos del puntuador y los hallazgos «bloquea»/«importante» del revisor.
+- en la vuelta 2 o 3: la lista exacta de arreglos del puntuador y los hallazgos «bloquea»/«importante» del revisor;
+- «Cerrá SIEMPRE con una línea `ESTADO: hecho`, `ESTADO: no hecho — <motivo concreto>` o
+  `ESTADO: bloqueado — <qué falta y de quién depende>`. Nada de "casi listo" ni de cerrar sin estado.»
 
-Cuando vuelva, guardá vos (no le creas al informe):
+Leé el estado antes que nada: si no viene, es `no hecho` y se lo pedís de nuevo. `bloqueado` por una decisión
+que no está en el plan → frenás y le preguntás al usuario (no hay vuelta nueva que lo arregle). `no hecho` con
+motivo → otra vuelta del paso 3 con ese motivo, sin pasar por revisor ni puntuador. Solo con `hecho` se sigue.
+
+Cuando vuelva con `hecho`, guardá vos (no le creas al informe):
 ```bash
 cd "<WT>" && git add -N . && git diff > "<estado>/diff-N.patch" && git status --short
 ```
