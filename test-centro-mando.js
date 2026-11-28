@@ -652,9 +652,10 @@ titulo('Los agentes con Claude · la guarda numérica');
   check('una redacción para otro tono se rechaza', /tono/.test(await lanzaA(() => S.redactarItem({ liga: 'lnb', zona: 'unica', uid: u, tono: 'polemico', redaccion: fiel }))));
   escribir(arm);
   check('si nombra a un club del libro en una pieza anónima, se descarta entera', /nombró a alguien/.test(await lanzaA(() => S.redactarItem({ liga: 'lnb', zona: 'unica', uid: u, redaccion: fuga }))));
-  const cmd = fs.readFileSync('.claude/commands/agencia.md', 'utf8');
+  const cmd = fs.readFileSync('.claude/skills/agencia/SKILL.md', 'utf8');
   check('/agencia exige confirmación antes de publicar e importar', /sin un «sí» del usuario/.test(cmd) && /Pedí confirmación/.test(cmd) && /preguntá cuáles aprobar/.test(cmd));
-  check('/agencia no edita la bandeja a mano y borra siempre las placas temporales', /No edites .bandeja\.json. ni .aprendizaje\.json. a mano/.test(cmd) && /Hacelo siempre/.test(cmd));
+  // El \s+ es a propósito: la skill parte «Hacelo siempre» en dos líneas.
+  check('/agencia no edita la bandeja a mano y borra siempre las placas temporales', /No edites .bandeja\.json. ni .aprendizaje\.json. a mano/.test(cmd) && /Hacelo\s+siempre/.test(cmd));
   check('/agencia usa las rutas que el servidor tiene', ['/api/bandeja', '/api/bandeja/accion', '/api/bandeja/redactar', '/api/aprendizaje', '/api/opciones'].every((r) => cmd.indexOf(r) !== -1 && fs.readFileSync('centro-mando/servidor.js', 'utf8').indexOf("'" + r + "'") !== -1));
   const hp = M.placasHtml(Object.assign({}, p, { guion: ['portada', 'corta', 'x'.repeat(400), 'fin'] }), 'g');
   check('un texto largo baja de cuerpo en la placa', /class="baj gr">corta/.test(hp) && /class="baj ch">x{400}/.test(hp));
@@ -1000,6 +1001,182 @@ titulo('Los agentes con Claude · la guarda numérica');
     const r1x = L.filtrar({ titulo: 't', ganchos: [], guion: [], copy: 'El 7 de 12. ¿Sabés cuántas de las tuyas?', placas: [pl('gancho', 'g'), pl('evidencia', '7 de 12'), pl('evidencia', 'Pasa en el 40 % de los casos'), pl('propuesta', 'El que no lo mide decide a ciegas', '¿Quién de los tuyos lo hace?'), pl('cierre', 'c')] }, base);
     return r1x.placas.length === 4 && r1x.placas.every((x) => !/40/.test(x.texto)) && r1x.placas[2].destacado === '¿Quién de los tuyos lo hace?' && r1x.descartado.some((d) => /40/.test(d.motivo));
   })());
+
+  titulo('La Mesa de control · solo lectura');
+  {
+    const MS = require('./centro-mando/mesa.js');
+    const pth = require('path'), osx = require('os');
+    const AHORA = new Date('2026-11-27T12:00:00Z');
+    const base = fs.mkdtempSync(pth.join(osx.tmpdir(), 'mesa-'));
+    const mk = (...p) => { const d = pth.join(base, ...p); fs.mkdirSync(d, { recursive: true }); return d; };
+    const todos = (r) => r.decidiHoy.concat(r.correSolo, r.datos);
+    /* NINGUNA llamada de esta sección sale a Upstash: servidor.js cargó server/.env y kv.configurado() lee process.env,
+       así que sin un kv inyectado la fuente «ciclos» leía el catálogo REAL (313 ítems, minutos de red). `mesaT` inyecta
+       un kv de guardia; si alguna lectura lo toca para leer, lanza. */
+    const guardia = { configurado: () => false, leerHash: async () => { throw new Error('GUARDIA: se leyó el KV real'); }, leerCampos: async () => { throw new Error('GUARDIA: se leyó el KV real'); } };
+    const resultadosMesa = [];
+    const mesaT = async (d, o) => { const r = await MS.mesa(Object.assign({ kv: guardia }, d), o); resultadosMesa.push({ kvPropio: !!(d && d.kv), r }); return r; };
+
+    /* A · el auditor */
+    const inf = [{ nivel: 'ERROR', area: 'escudos', sujeto: 'club-x', texto: 'falta el escudo', arreglo: 'node server/bin/x.js' }, { nivel: 'AVISO', area: 'fechas', sujeto: 'torneo-y', texto: 'fecha rara', arreglo: null }];
+    const aN = MS.itemsAuditor(inf, '2026-11-25', AHORA);
+    check('A · el ERROR va a «Decidí hoy» como «rompe» y el arreglo viaja como comando', aN.decidiHoy.length === 1 && aN.decidiHoy[0].gravedad === 'rompe' && aN.decidiHoy[0].comando === 'node server/bin/x.js');
+    check('A · el AVISO va a «Datos» como riesgo y sin comando si el arreglo es null', aN.datos.length === 1 && aN.datos[0].gravedad === 'riesgo' && !('comando' in aN.datos[0]));
+    const aV = MS.itemsAuditor(inf, '2026-10-15', AHORA);
+    check('A · un informe de más de 7 días suma el ítem «es del 15/10/2026» con «npm run auditar» en «Decidí hoy», como riesgo', aV.decidiHoy.some((i) => /es del 15\/10\/2026/.test(i.titulo) && i.comando === 'npm run auditar' && i.gravedad === 'riesgo'));
+    check('A · un ERROR de informe viejo lleva la fecha en el título («[15/10] …») y NO es «rompe»', aV.decidiHoy.concat(aV.datos).filter((i) => /escudos · club-x/.test(i.titulo)).length === 1 && aV.decidiHoy.concat(aV.datos).filter((i) => /escudos · club-x/.test(i.titulo)).every((i) => /^\[15\/10\] /.test(i.titulo) && i.gravedad === 'riesgo') && !aV.decidiHoy.some((i) => i.gravedad === 'rompe'));
+    check('A · un ERROR de informe nuevo sí es «rompe» y su título no lleva fecha', aN.decidiHoy[0].gravedad === 'rompe' && !/^\[/.test(aN.decidiHoy[0].titulo));
+    check('A · uno nuevo no lo suma', !aN.decidiHoy.concat(aN.datos).some((i) => /último informe/.test(i.titulo)));
+    const dA = mk('a-vacio'); const rA = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: async () => ({ stdout: '{}' }), env: {}, sinCache: true, ahora: () => AHORA });
+    check('A · sin ningún informe, la fuente cae diciendo por qué y no rompe', rA.fuentes.auditor.ok === false && /auditor/.test(rA.fuentes.auditor.error));
+
+    /* B · tareas */
+    const T = (resultado) => [{ nombre: 'MotorStats Agencia Semanal', estado: 'Ready', ultima: '2026-11-24T09:30:00', resultado, proxima: '2026-12-01T09:30:00' }];
+    const b0 = MS.itemsTareas(T(0), AHORA), bc = MS.itemsTareas(T(3221225786), AHORA), b1 = MS.itemsTareas(T(1), AHORA);
+    check('B · resultado 0: solo «Corre solo», sin alarma', b0.correSolo.length === 1 && b0.decidiHoy.length === 0 && b0.datos.length === 0);
+    check('B · 3221225786 (0xC000013A): «se cerró con la sesión», info y sin alarma', bc.decidiHoy.length === 0 && bc.datos.length === 1 && bc.datos[0].gravedad === 'info' && /se cerró con la sesión/.test(bc.datos[0].titulo));
+    check('B · cualquier otro resultado: «terminó con error» en «Decidí hoy» como riesgo, con la fecha', b1.decidiHoy.length === 1 && b1.decidiHoy[0].gravedad === 'riesgo' && /Agencia Semanal terminó con error el 2026-11-24/.test(b1.decidiHoy[0].titulo));
+    check('B · 267009 es «corriendo», no un error', MS.interpretarResultado(267009) === 'corriendo' && MS.itemsTareas(T(267009), AHORA).decidiHoy.length === 0);
+    const rutas = { agencia: pth.join('/x', 'ag'), ingesta: pth.join('/x', 'ing') };
+    check('B · el log de la Agencia Semanal es <AGENCIA_DATOS>/logs/AAAA-MM-DD_semanal.log con la fecha de la última corrida', MS.logDeTarea({ nombre: 'MotorStats Agencia Semanal', ultima: '2026-11-24T09:30:00' }, rutas) === pth.join('/x', 'ag', 'logs', '2026-11-24_semanal.log') && MS.logDeTarea({ nombre: 'MotorStats Agencia Diaria', ultima: '2026-11-25T09:30:00' }, rutas) === pth.join('/x', 'ag', 'logs', '2026-11-25_diaria.log'));
+    check('B · el Vigía apunta a salida/vigia/AAAA-MM-DD.log y una tarea desconocida no inventa ningún log', MS.logDeTarea({ nombre: 'MotorStats Vigia', ultima: '2026-11-25T09:30:00' }, rutas) === pth.join('/x', 'ing', 'salida', 'vigia', '2026-11-25.log') && MS.logDeTarea({ nombre: 'MotorStats Otra', ultima: '2026-11-25T09:30:00' }, rutas) === null);
+    check('B · el ítem con error nombra el log real y ya no manda a automatizacion/', (() => { const x = MS.itemsTareas(T(1), AHORA, rutas).decidiHoy[0]; return x.detalle.includes('2026-11-24_semanal.log') && !/automatizacion/.test(x.detalle); })());
+    let comandoPs = null;
+    const exB = async (cmd, args) => { if (cmd === 'powershell') { comandoPs = args.join(' '); return { stdout: JSON.stringify(T(1)[0]) }; } return { stdout: '{"cantidad":0}' }; };
+    const rB = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'win32', exec: exB, env: {}, sinCache: true, ahora: () => AHORA });
+    check('B · con PowerShell que devuelve UN solo objeto (no lista) igual se lee', rB.fuentes.tareas.ok === true && rB.decidiHoy.some((i) => i.origen === 'tareas'));
+    check('B · el PowerShell solo lee: Get-ScheduledTask sin Set/Start/Register/Unregister', /Get-ScheduledTask/.test(comandoPs) && !/Set-|Start-|Register-|Unregister-|Stop-|Disable-|Enable-/.test(comandoPs));
+    check('B · sin tareas MotorStats el Get-ScheduledTask no tira error (SilentlyContinue) y la lista queda vacía', /-ErrorAction SilentlyContinue/.test(MS.PS_TAREAS) && (await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'win32', exec: async (c) => (c === 'powershell' ? { stdout: '' } : { stdout: '{"cantidad":0}' }), env: {}, sinCache: true, ahora: () => AHORA })).fuentes.tareas.ok === true);
+    const rBl = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: exB, env: {}, sinCache: true, ahora: () => AHORA });
+    check('B · fuera de Windows: fuentes.tareas = { ok:false, error:"solo Windows" }', rBl.fuentes.tareas.ok === false && rBl.fuentes.tareas.error === 'solo Windows');
+
+    /* C · candado */
+    const cSin = MS.itemsCandado(null, AHORA), cFresco = MS.itemsCandado(AHORA.getTime() - 20 * 60000, AHORA), cViejo = MS.itemsCandado(AHORA.getTime() - 90 * 60000, AHORA);
+    check('C · sin candado: «sin corrida en curso» en «Corre solo»', cSin.correSolo.length === 1 && /Sin corrida/.test(cSin.correSolo[0].titulo) && cSin.decidiHoy.length === 0);
+    check('C · candado de 20 min: «en curso», no hay que subir a mano', cFresco.correSolo.length === 1 && /en curso/.test(cFresco.correSolo[0].titulo) && cFresco.decidiHoy.length === 0);
+    check('C · candado de 90 min: «colgado» como riesgo en «Decidí hoy» y dice que no se borra', cViejo.decidiHoy.length === 1 && cViejo.decidiHoy[0].gravedad === 'riesgo' && /colgado/.test(cViejo.decidiHoy[0].titulo) && /no lo borra/.test(cViejo.decidiHoy[0].detalle));
+
+    /* D · cola de Canva */
+    const dd = MS.itemsCola([{ id: 'p1', titulo: 'Pieza uno', estado: 'pendiente' }, { id: 'p2', estado: 'importada' }]);
+    check('D · solo las pendientes, con «/agencia canva» de comando', dd.decidiHoy.length === 1 && /Pieza uno/.test(dd.decidiHoy[0].titulo) && dd.decidiHoy[0].comando === '/agencia canva');
+
+    /* E · banco */
+    const ee = MS.itemsBanco({ ideas: [{ estado: 'nueva' }, { estado: 'nueva' }, { estado: 'elegida' }, { estado: 'en-curso' }, { estado: 'descartada' }] }, [{ rank: 1, titulo: 'Idea A' }, { rank: 2, titulo: 'Idea B' }], '2026-11-27');
+    check('E · cuenta nueva / elegida / en curso en «Datos» y deja afuera lo descartado', ee.datos.length === 3 && ee.datos.some((i) => /^2 ideas nuevas/.test(i.titulo)) && !ee.datos.some((i) => /descartada/.test(i.titulo)));
+    check('E · las ideas nuevas del último día piden decisión', ee.decidiHoy.length === 2 && ee.decidiHoy.every((i) => i.gravedad === 'info'));
+    const e2 = MS.itemsBanco({ ideas: [{ estado: 'elegida', datos: { titulo: ' idea a ' } }] }, [{ rank: 1, titulo: 'Idea A' }], '2026-11-27');
+    check('E · una idea del día que ya se decidió en el banco no se vuelve a pedir', e2.decidiHoy.length === 0);
+
+    /* F · ciclos con stub del motor, para fijar el criterio sin armar un paquete entero */
+    const STUB = {
+      ventanas: () => [{ numero: 0, cerrado: true, desde: '2026-10-01', hasta: '2026-10-20' }, { numero: 1, cerrado: true, desde: '2026-10-21', hasta: '2026-11-10' }, { numero: 2, cerrado: true, desde: '2026-11-11', hasta: '2026-11-25' }, { numero: 3, cerrado: false, desde: '2026-11-26', hasta: '2026-11-26' }],
+      armarVentana: (p, c) => ({ meta: { tipo: 'ciclo', numero: c.numero, n: 4 }, num: c.numero }),
+      claveSello: (m) => 'c' + m.numero + 'n' + m.n,
+      auditar: (ciclo) => (ciclo.num === 2 ? { apto: false, items: [{ nivel: 'error', texto: 'Faltan los parciales por cuarto.' }] } : { apto: true, items: [] }),
+    };
+    const f = MS.itemsCiclosEquipo(STUB, {}, { 'eq-x|c1n4': { huella: 'h' } }, 'eq-x', 'club1', 'cat1', 'EQ X');
+    check('F · cerrado + apto + sin sello: «listo para cerrar» con «/cerrar-ciclo <club> <cat> <equipo> <N>»', f.decidiHoy.length === 1 && f.decidiHoy[0].comando === '/cerrar-ciclo club1 cat1 "EQ X" 0');
+    check('F · el ciclo ya sellado no aparece en ningún lado', !todos(f).some((i) => / 1 de /.test(i.titulo)));
+    check('F · cerrado pero NO apto: «Datos» como riesgo con el motivo de la auditoría', f.datos.length === 1 && f.datos[0].gravedad === 'riesgo' && /parciales por cuarto/.test(f.datos[0].detalle));
+    check('F · el ciclo abierto (3 de 4) no se ofrece', !todos(f).some((i) => / 3 de /.test(i.titulo)));
+    /* Un catálogo con: un cliente con equipo propio, una categoría sin equipo propio, una entrada tipo «torneo» y un equipo AJENO en el mismo paquete. */
+    const leidosF = [];
+    const paqF = (eq) => ({ equipo: eq, ciclos: { partidos: [{ fecha: '2026-11-01' }] } });
+    const kvF = { configurado: () => true,
+      leerCampos: async (k, campos) => { leidosF.push(k + '#' + campos.join(',')); const h = { 'eq-x': paqF('EQ X'), 'eq-ajeno': paqF('EQ AJENO') }; const o = {}; campos.forEach((c) => { if (h[c]) o[c] = h[c]; }); return o; },
+      leerHash: async (k) => { if (/^sgadd:pbp:/.test(k)) throw new Error('NO se lee el hash entero del paquete'); return { 'eq-x|c0n4': { huella: 'h' } }; } };
+    const catF = { cargar: async () => ({ catalogo: { club1: { categorias: { cat1: {}, cat2: {}, cat3: {} } }, torneo1: { tipo: 'torneo', categorias: { zona: {} } } } }),
+      resolver: (c, club, slug) => ({ laboratorio: (slug === 'cat1' || slug === 'cat3' || slug === 'zona') ? ['pbp'] : [], equipoPropio: slug === 'cat1' ? 'EQ X' : (slug === 'zona' ? 'EQ ZONA' : '') }) };
+    const pbpF = { claveDeDatos: (c, club, slug) => 'sgadd:pbp:' + club + ':' + slug, CAMPO_INDICE: '__indice', campoDeEquipo: (n) => String(n).toLowerCase().replace(/ /g, '-') };
+    const rF = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: async () => ({ stdout: '{"cantidad":0}' }), env: {}, sinCache: true, ahora: () => AHORA, kv: kvF, catalogo: catF, pbp: pbpF, ciclos: STUB });
+    check('F · de punta a punta con KV falso: solo el equipo propio, un campo por lectura (sin HGETALL) y respeta el sello', rF.fuentes.ciclos.ok === true && rF.decidiHoy.filter((i) => i.origen === 'ciclos').map((i) => i.comando).join('|') === '/cerrar-ciclo club1 cat1 "EQ X" 1' && leidosF.length > 0 && leidosF.every((l) => /#eq-x$/.test(l)));
+    check('F · el equipo AJENO del mismo paquete no aparece en ningún lado', !todos(rF).some((i) => /AJENO/i.test(i.titulo + i.detalle + (i.comando || ''))));
+    check('F · la entrada tipo «torneo» se saltea: no se lee su clave ni su equipo', !leidosF.some((l) => /torneo1|zona/.test(l)) && !todos(rF).some((i) => /ZONA/.test(i.titulo + (i.comando || ''))));
+    const sinEq = rF.datos.filter((i) => i.origen === 'ciclos' && /equipo propio/.test(i.titulo));
+    check('F · las categorías sin equipo propio salen en UN solo ítem «datos» que las lista', sinEq.length === 1 && sinEq[0].gravedad === 'info' && /club1\/cat3/.test(sinEq[0].detalle) && !/club1\/cat2/.test(sinEq[0].detalle));
+    check('F · «Decidí hoy» no se llena con ítems de equipos: un solo ciclo listo en todo el catálogo de prueba', rF.decidiHoy.filter((i) => i.origen === 'ciclos').length === 1);
+    const rF2 = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: async () => ({ stdout: '{"cantidad":0}' }), env: {}, sinCache: true, ahora: () => AHORA, kv: { configurado: () => false }, catalogo: catF, pbp: pbpF, ciclos: STUB });
+    check('F · sin KV configurado: fuentes.ciclos = { ok:false, error }', rF2.fuentes.ciclos.ok === false && /KV/.test(rF2.fuentes.ciclos.error) && /server\/\.env/.test(rF2.fuentes.ciclos.error));
+
+    /* G · manuales */
+    const g = MS.itemsManuales({ cantidad: 2, fechaRevisada: '2026-11-26', fallaron: [{ zona: 'zona-q' }] });
+    check('G · cantidad 2: «2 partidos del 26/11/2026 por cargar» con «/fecha-manual»', g.decidiHoy.length === 1 && /^2 partidos del 26\/11\/2026/.test(g.decidiHoy[0].titulo) && g.decidiHoy[0].comando === '/fecha-manual');
+    check('G · «fallaron» no vacío: «Datos» como riesgo', g.datos.length === 1 && g.datos[0].gravedad === 'riesgo' && /zona-q/.test(g.datos[0].detalle));
+    let llamadaG = null;
+    const exG = async (cmd, args, o) => { llamadaG = { cmd, args, o }; return { stdout: 'ruido\n' + JSON.stringify({ ok: true, cantidad: 2, fechaRevisada: '2026-11-26', fallaron: [] }) }; };
+    const rG = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: exG, env: {}, sinCache: true, ahora: () => AHORA });
+    check('G · con exec falso devuelve la cantidad parseada', rG.fuentes.manuales.ok === true && rG.decidiHoy.some((i) => i.origen === 'manuales'));
+    check('G · el comando armado NUNCA lleva --real, --forzar ni --confirmar', llamadaG && llamadaG.cmd === process.execPath && llamadaG.args.join(' ') === 'server/bin/carga-manual.js control' && !llamadaG.args.some((x) => /^--/.test(x)));
+    const rGe = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: async () => { throw new Error('boom'); }, env: {}, sinCache: true, ahora: () => AHORA });
+    check('G · si el control falla, la fuente lo dice y las demás siguen', rGe.fuentes.manuales.ok === false && /boom/.test(rGe.fuentes.manuales.error) && rGe.fuentes.candado.ok === true);
+
+    const gF = MS.itemsManuales({ cantidad: 0, fallaron: [{ zona: 'zona-q', mensaje: 'no contesta' }] });
+    check('G · «fallaron» incluye el mensaje de cada zona', /zona-q: no contesta/.test(gF.datos[0].detalle));
+    const exGe = async () => { const e = new Error('salió 1'); e.stdout = 'ruido\n' + JSON.stringify({ ok: false, codigo: 'SIN_TORNEOS_MANUALES', mensaje: 'No hay torneos manuales cargados.' }); throw e; };
+    const rGx = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: exGe, env: {}, sinCache: true, ahora: () => AHORA });
+    check('G · si el control sale con error pero trae {codigo, mensaje}, es un ítem «datos» y la fuente no cae', rGx.fuentes.manuales.ok === true && rGx.datos.some((i) => i.origen === 'manuales' && /SIN_TORNEOS_MANUALES/.test(i.titulo) && /No hay torneos/.test(i.detalle)));
+
+    /* H · cerebro */
+    const md = ['# Pendientes', '', '| Qué | De quién depende | Desde |', '|---|---|---|', '| Revisar el contrato | La dirección | 2026-11-20 |', '| Subir la foto | Un tercero | 2026-11-22 |'].join('\n');
+    const h = MS.itemsCerebro(md);
+    check('H · una fila por pendiente, salteando encabezado y separador', h.datos.length === 2 && h.datos[0].titulo === 'Revisar el contrato' && /La dirección/.test(h.datos[0].detalle));
+    const rH0 = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: async () => ({ stdout: '{}' }), env: {}, sinCache: true, ahora: () => AHORA });
+    check('H · sin MESA_CEREBRO: { ok:false, error:"MESA_CEREBRO sin configurar" }', rH0.fuentes.cerebro.ok === false && rH0.fuentes.cerebro.error === 'MESA_CEREBRO sin configurar');
+    const dC = mk('cerebro'); fs.writeFileSync(pth.join(dC, 'pendientes.md'), md);
+    const rH1 = await mesaT({ datos: dA, agencia: dA, ingesta: dA, plataforma: 'linux', exec: async () => ({ stdout: '{}' }), env: { MESA_CEREBRO: dC }, sinCache: true, ahora: () => AHORA });
+    check('H · con MESA_CEREBRO lee el archivo real', rH1.fuentes.cerebro.ok === true && rH1.datos.filter((i) => i.origen === 'cerebro').length === 2);
+
+    /* Las fuentes de archivo, de punta a punta sobre una carpeta real */
+    const dD = mk('todo');
+    fs.mkdirSync(pth.join(dD, 'auto-process')); fs.writeFileSync(pth.join(dD, 'auto-process', '2026-11-26_auditoria.json'), JSON.stringify(inf));
+    fs.mkdirSync(pth.join(dD, 'centro-mando')); fs.writeFileSync(pth.join(dD, 'centro-mando', 'cola-canva.json'), JSON.stringify({ pendientes: [{ id: 'p1', estado: 'pendiente' }] }));
+    const ag = mk('ag', 'agencia'); fs.mkdirSync(pth.join(ag, 'ideas')); fs.writeFileSync(pth.join(ag, 'banco.json'), JSON.stringify({ ideas: [{ estado: 'nueva' }], decisiones: [] }));
+    fs.writeFileSync(pth.join(ag, 'ideas', '2026-11-26.json'), JSON.stringify({ ideas: [{ rank: 1, titulo: 'Idea del día' }] }));
+    const ing = mk('ing', 'salida'); const lock = pth.join(ing, '.corrida.lock'); fs.writeFileSync(lock, ''); fs.utimesSync(lock, new Date(AHORA - 10 * 60000), new Date(AHORA - 10 * 60000));
+    const depsReales = { kv: guardia, datos: dD, agencia: pth.join(base, 'ag'), ingesta: pth.join(base, 'ing'), plataforma: 'linux', exec: async () => ({ stdout: '{"cantidad":0}' }), env: {}, sinCache: true, ahora: () => AHORA };
+    const rR = await mesaT(depsReales);
+    check('con carpetas reales, las fuentes de archivo (auditor, cola, banco, candado) responden ok', ['auditor', 'cola', 'banco', 'candado'].every((k) => rR.fuentes[k].ok === true) && rR.fuentes.auditor.actualizado === '2026-11-26');
+    check('la forma de la respuesta: generado, deCache, tres columnas y las ocho fuentes', typeof rR.generado === 'string' && rR.deCache === false && Array.isArray(rR.decidiHoy) && Array.isArray(rR.correSolo) && Array.isArray(rR.datos) && ['auditor', 'tareas', 'candado', 'cola', 'banco', 'ciclos', 'manuales', 'cerebro'].every((k) => k in rR.fuentes));
+    check('cada ítem trae origen, titulo, detalle y una gravedad válida', todos(rR).every((i) => i.origen && i.titulo && 'detalle' in i && ['rompe', 'riesgo', 'info'].includes(i.gravedad)));
+    check('«Decidí hoy» sale ordenado: rompe, después riesgo, después info', rR.decidiHoy.map((i) => i.gravedad).join(',') === rR.decidiHoy.map((i) => i.gravedad).slice().sort((x, y) => ({ rompe: 0, riesgo: 1, info: 2 }[x] - { rompe: 0, riesgo: 1, info: 2 }[y])).join(',') && rR.decidiHoy[0].gravedad === 'rompe');
+    check('el orden no cambia el relativo de dos ítems de la misma gravedad', MS.ordenar([{ gravedad: 'info', titulo: 'a' }, { gravedad: 'rompe', titulo: 'b' }, { gravedad: 'info', titulo: 'c' }]).map((x) => x.titulo).join('') === 'bac');
+
+    /* Una fuente que lanza no rompe, y la caché */
+    const rL = await mesaT(Object.assign({}, depsReales, { datos: pth.join(base, 'no-existe'), fs: Object.assign({}, fs, { readdirSync: () => { throw new Error('disco roto'); } }) }));
+    check('una fuente que lanza queda como { ok:false, error } y las demás siguen', rL.fuentes.auditor.ok === false && /auditor|informe/.test(rL.fuentes.auditor.error) && rL.fuentes.candado.ok === true && rL.fuentes.cola.ok === true);
+    MS.vaciarCache();
+    let leidas = 0; const dCache = { kv: guardia, datos: dD, agencia: pth.join(base, 'ag'), ingesta: pth.join(base, 'ing'), plataforma: 'linux', exec: async () => { leidas++; return { stdout: '{"cantidad":0}' }; }, env: {} };
+    const c1 = await mesaT(Object.assign({}, dCache, { ahora: () => AHORA }));
+    const c2 = await mesaT(Object.assign({}, dCache, { ahora: () => new Date(AHORA.getTime() + 60000) }));
+    check('la caché: la segunda lectura a 1 min sale marcada deCache y no vuelve a leer', c1.deCache === false && c2.deCache === true && leidas === 1);
+    const c3 = await mesaT(Object.assign({}, dCache, { ahora: () => new Date(AHORA.getTime() + 60000) }), { fresco: true });
+    check('?fresco=1 saltea la caché', c3.deCache === false && leidas === 2);
+    const c4 = await mesaT(Object.assign({}, dCache, { ahora: () => new Date(AHORA.getTime() + 6 * 60000) }));
+    check('pasados 5 minutos la caché vence', c4.deCache === false && leidas === 3);
+    MS.vaciarCache();
+    let lectBloq = 0, soltar; const traba = new Promise((r) => { soltar = r; });
+    const dVuelo = Object.assign({}, dCache, { exec: async () => { lectBloq++; await traba; return { stdout: '{"cantidad":0}' }; }, ahora: () => AHORA });
+    const v1 = MS.mesa(dVuelo), v2 = MS.mesa(dVuelo, { fresco: true });
+    soltar(); const [rv1, rv2] = await Promise.all([v1, v2]);
+    check('una lectura en vuelo se comparte: dos pedidos a la vez devuelven la misma promesa y leen UNA vez', v1 === v2 && rv1 === rv2 && lectBloq === 1);
+    MS.vaciarCache();
+    check('NINGUNA llamada a mesa() de esta sección usó el Upstash real: sin kv propio, «ciclos» cayó contra el kv de guardia', resultadosMesa.length > 15 && resultadosMesa.filter((x) => !x.kvPropio).every((x) => x.r.fuentes.ciclos.ok === false && /KV/.test(x.r.fuentes.ciclos.error) && !/GUARDIA/.test(x.r.fuentes.ciclos.error)));
+
+    /* Solo lectura, privacidad y el cableado */
+    const srcMesa = fs.readFileSync('centro-mando/mesa.js', 'utf8'), srcUi = fs.readFileSync('centro-mando/mesa-ui.js', 'utf8'), srcSrv = fs.readFileSync('centro-mando/servidor.js', 'utf8');
+    const docMesa = fs.readFileSync('docs/claude/centro-mando-y-contenido.md', 'utf8');
+    check('mesa.js no escribe: sin writeFile, appendFile, escribir(, HSET, --real, --confirmar, --enviar, unlink ni rm', !/writeFile|appendFile|escribir\(|HSET|--real|--confirmar|--enviar|unlink|\brm\b|rmSync/.test(srcMesa));
+    check('mesa.js no registra ninguna ruta POST y solo expone /api/mesa y /mesa-ui.js', !/\.post\(|\.put\(|\.delete\(|\.patch\(/.test(srcMesa) && /a\.get\('\/api\/mesa'/.test(srcMesa) && !/\/api\/mesa[^']*'.*post/i.test(srcSrv));
+    check('el servidor monta la mesa junto a la agencia', /require\('\.\/mesa\.js'\)\.montar\(a, ruta\)/.test(srcSrv));
+    const repoPrivado = new RegExp(['motorstats', 'cerebro'].join('-'), 'i');
+    const sec183 = docMesa.slice(docMesa.indexOf('## 183'));
+    check('ni mesa.js, ni mesa-ui.js, ni la doc nueva nombran el repo privado del cerebro', !repoPrivado.test(srcMesa) && !repoPrivado.test(srcUi) && docMesa.indexOf('## 183') >= 0 && !repoPrivado.test(sec183));
+    check('mesa-ui.js pasa por esc() el título, el detalle y el comando', /esc\(it\.titulo\)/.test(srcUi) && /esc\(it\.detalle\)/.test(srcUi) && /esc\(it\.comando\)/.test(srcUi) && !/innerHTML[^;]*\+\s*it\.(titulo|detalle|comando)\b/.test(srcUi));
+    check('mesa-ui.js no tiene botones que ejecuten: solo «Actualizar», que pide ?fresco=1 por GET', (srcUi.match(/<button/g) || []).length === 1 && /\?fresco=1/.test(srcUi) && !/api\('[^']*',\s*\{/.test(srcUi));
+    const html = fs.readFileSync('centro-mando/index.html', 'utf8');
+    check('el index tiene la pestaña, su sección, el script y la carga', /data-tab="mesa"/.test(html) && /<section id="tab-mesa" role="tabpanel" hidden>/.test(html) && /\/mesa-ui\.js/.test(html) && /TAB === 'mesa'\) cargarMesa/.test(html));
+    fs.rmSync(base, { recursive: true, force: true });
+  }
 
   fsx.rmSync(DATOS_TMP, { recursive: true, force: true });
   console.log(NL + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

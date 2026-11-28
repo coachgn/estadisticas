@@ -165,11 +165,12 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
 node test-contenido.js     # 142 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
                            #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
 
-node test-centro-mando.js  # 461 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
+node test-centro-mando.js  # 524 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
                            #             el texto libre de «A medida», el cruce de dos métricas y la voz de entrenador-analista (110),
                            #             el % de victorias, los textos sin cortar y la tesis de vestuario (111)
                            #             (pide «npm install» en centro-mando/ una vez: los agentes usan el SDK de Claude, punto 107)
                            #             el play-by-play que no se presta, el aprendizaje y el servidor en 127.0.0.1 (105)
+                           #             · y la Mesa de control, de solo lectura: las ocho fuentes, la caché y que no escriba (punto 183)
 
 node test-alertas-partidos.js # 38 tests · las alertas de partido: -4 dias a las 09:00 AR, el id estable, el
                            #             cliente de Calendar, la corrida idempotente y el cron (punto 163)
@@ -638,3 +639,4 @@ El detalle de cada punto vive en `docs/claude/`. Antes de tocar un tema, leé su
 | 180 · LA MEDICIÓN DESPUÉS DEL CLIC · UTM Y CUATRO EVENTOS (2026-11-17) | [docs/claude/auth-landing-demo.md](docs/claude/auth-landing-demo.md) |
 | 181 · LA AGENCIA, A LA VISTA · rutinas sin sesión, banco de ideas y tablero (2026-11-17) | [docs/claude/centro-mando-y-contenido.md](docs/claude/centro-mando-y-contenido.md) |
 | 182 · LA VENTANA DE UNA CARD · Temporada · Últimos 4 · 6 · 10 (2026-11-25) | [docs/claude/jugadores-y-umbrales.md](docs/claude/jugadores-y-umbrales.md) |
+| 183 · LA MESA DE CONTROL · una sola pantalla, solo lectura (2026-11-27) | [docs/claude/centro-mando-y-contenido.md](docs/claude/centro-mando-y-contenido.md) |
