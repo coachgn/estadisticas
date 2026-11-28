@@ -25,12 +25,13 @@ Nunca escribas secretos, sheetIds ni mails reales en el repo (es público), ni l
    git worktree add "../estadisticas-bucle/<slug>" -b "bucle/<slug>"
    ```
    Si la rama ya existe, frená y preguntá (puede ser trabajo de otra corrida). Guardá la ruta absoluta: `WT`.
-4. Lo ignorado por git NO está en el worktree (`server/.env`, `contenido/`, `centro-mando/node_modules`, los `mkt-*`).
-   Para que la suite sea comparable con `main`:
+4. Lo ignorado por git NO está en el worktree (`server/.env`, `server/node_modules`, `contenido/`,
+   `centro-mando/node_modules`, los `mkt-*`). Para que la suite sea comparable con `main`:
    ```bash
    cp server/.env "<WT>/server/.env"      # secretos locales: ignorado por server/.gitignore, NUNCA se commitea
+   cd "<WT>/server" && npm ci             # sin esto, test-centro-mando y test-cortesias rompen con «Cannot find module express»
    ```
-   Sin esa copia, 12 tests dan rojo con `SIN_SECRETO`. No muestres su contenido. Si el plan toca `centro-mando/`,
+   Sin la copia del `.env`, 12 tests dan rojo con `SIN_SECRETO`. No muestres su contenido. Si el plan toca `centro-mando/`,
    corré además `cd "<WT>/centro-mando" && npm ci`; si no, `test-centro-mando.js` queda como rojo de ambiente.
    Lo que igual falle por ambiente lo separa la línea de base (paso 2).
 
@@ -58,7 +59,10 @@ Si la tarea es ambigua o choca con una regla del proyecto, preguntale al usuario
 Lanzá `implementer` (sin `isolation`: el worktree ya existe) con:
 - el contenido de `plan.md`;
 - «Trabajás SOLO en `WT` = <ruta absoluta>. Todo Read/Edit/Write con rutas absolutas dentro de `WT`; todo comando
-  Bash empieza con `cd "<WT>" &&`. No toques la carpeta principal del repo. No commitees.»
+  Bash empieza con `cd "<WT>" &&`. No toques la carpeta principal del repo. No commitees. Para editar usá Edit/Write,
+  no `python3 - <<EOF` (en Windows `python3` es el alias de la Store: se queda esperando para siempre).»
+- al cerrar la vuelta, buscá procesos que hayan quedado colgados con el worktree en la línea de comandos
+  (`Get-CimInstance Win32_Process | ? CommandLine -match 'estadisticas-bucle'`) y detenelos de padres a hijos.
 - en la vuelta 2 o 3: la lista exacta de arreglos del puntuador y los hallazgos «bloquea»/«importante» del revisor;
 - «Cerrá SIEMPRE con una línea `ESTADO: hecho`, `ESTADO: no hecho — <motivo concreto>` o
   `ESTADO: bloqueado — <qué falta y de quién depende>`. Nada de "casi listo" ni de cerrar sin estado.»
@@ -73,6 +77,18 @@ cd "<WT>" && git add -N . && git diff > "<estado>/diff-N.patch" && git status --
 ```
 y corré en `WT` los tests del plan + la suite entera (`for f in test-*.js; do node "$f" ...`), salida resumida a `tests-N.txt`.
 Rojo que ya estaba en `tests-0.txt` = ambiente, se anota y no cuenta. Rojo nuevo = cuenta.
+
+**Smoke con datos reales, en solo lectura** (lo hace el líder, no el implementer): si el cambio lee datos (KV, catálogo,
+`contenido/`, tareas), llamá la función nueva con las dependencias reales y mirá la SALIDA, no solo que no lance
+(`node -e` con `require('./server/lib/env.js').cargar()` si necesita KV; apuntá `CENTRO_MANDO_DATOS`/`AGENCIA_DATOS` a la
+carpeta real si hace falta). Solo lecturas: nada con `--real`, `--confirmar`, `--enviar` ni escrituras. Enmascará mails e
+IDs al mostrarlo. Los tests con fixtures pueden pasar con una salida inservible (en la Mesa de control pasaron con 313
+ciclos «listos» que eran de todos los equipos del torneo): eso se ve acá o no se ve.
+
+**Tests que no salen a la red**: un test que hace `require` del servidor o de `server/lib/` hereda `server/.env` (el
+proceso ya lo cargó), y `kv.configurado()` mira `process.env`, no lo que le pases. Exigile al implementer que inyecte
+un KV falso en TODAS las llamadas y que haya un check que falle si se usa el real. Señal de alarma: un test que tarda
+decenas de segundos.
 
 **Probar que el test nuevo falla sin el arreglo** (reversiones): siempre sobre una COPIA en el scratchpad
 (`cp -r` de los archivos necesarios y se corre el test ahí). Nunca `git checkout <archivo>`, `git restore` ni `git stash`
