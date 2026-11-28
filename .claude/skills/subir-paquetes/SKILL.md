@@ -27,6 +27,22 @@ Hablá en español rioplatense, breve. Fuentes: `OPERACION_ECOSISTEMA.md` (punto
 Los ciclos **no tienen subida propia**: viajan dentro del paquete @3 de cada equipo (`exportar-web.js:282-294`).
 Que el panel lea el KV nuevo es inmediato: **no hay deploy** en este flujo.
 
+## Lo que ya corre solo (y no hay que pisar)
+
+- **Tarea de Windows «MotorStats Ingestion LNB»**: todos los días a las **02:00 y 10:00** corre la cadena completa
+  (`correr-lnb.cmd`) para LNB, LAB Norte y LAB Sur, y termina con `pbp.js subir --confirmar`.
+- **«MotorStats Vigia»**: arranca al iniciar sesión y dispara la misma cadena de una competencia apenas termina un
+  partido (mira el fixture cada 5 min con partidos en juego, cada 30 si no).
+- Las dos comparten el candado `../motorstats-ingestion/salida/.corrida.lock` (70 min, con chequeo de PID).
+  **`subir-paquetes.js` y `pbp.js subir` a mano NO toman el candado**: pueden pisar el KV en medio de una corrida.
+
+Por eso, antes de cualquier `--confirmar` a mano:
+1. que no exista `salida/.corrida.lock` (si existe, esperar o preguntar);
+2. que no falten menos de 15 minutos para las 02:00 o las 10:00;
+3. mirar el log de hoy del vigía (`salida/vigia/AAAA-MM-DD.log`): si hay un partido en juego de esa competencia, esperar.
+Para la LNB y la LAB, casi nunca hace falta subir a mano: la tarea y el vigía ya lo hacen. La subida a mano es para
+destinos que no están en la cadena, o para resubir un respaldo.
+
 ## Lo que la skill hace sola (lee, ensaya, valida)
 
 1. **Ubicar el destino**: el `--solo <id>` de `subir-paquetes.js` (lista de destinos al principio del script) o el par
@@ -68,8 +84,9 @@ Resubir el respaldo: `pbp.js subir --club X --categoria Y --dir <…/web.respald
 ## Huecos que no se completan de memoria
 
 - **Qué destinos están activos** y para qué cliente: dato de negocio, en el cerebro de negocio (directorio adicional local): `clientes/`. Si no está, se pregunta.
-- **La tarea programada de Windows** (`OPERACION_ECOSISTEMA.md`, punto 0): si corre sola, una subida a mano puede pisar
-  o ser pisada. Antes de subir a mano, preguntá si la tarea está activa.
+- **Si la tarea y el vigía siguen activos hoy**: se mira con
+  `Get-ScheduledTask -TaskName 'MotorStats*' | Get-ScheduledTaskInfo` (solo lee). Registrarlas, pausarlas o
+  desregistrarlas es tocar el sistema: con OK.
 
 ## Al cerrar
 

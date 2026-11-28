@@ -10,6 +10,8 @@
 !.claude/skills/subir-paquetes/
 !.claude/skills/cerrar-ciclo/
 !.claude/skills/fecha-manual/
+!.claude/skills/agencia/
+!.claude/skills/auditar/
 # Taste trae 37 MB de fotos de referencia: el repo es público y lo sirve
 # Pages. Queda solo local; se reinstala con npx skills add Leonxlnx/taste-skill.
 .agents/skills/design-taste-frontend/
