@@ -87,6 +87,7 @@
 <main>
   <nav role="tablist" aria-label="Módulos">
     <button role="tab" data-tab="agencia" aria-selected="true">🧭 Agencia · ideas del día</button>
+    <button role="tab" data-tab="mesa" aria-selected="false">🎚 Mesa de control</button>
     <button role="tab" data-tab="bandeja" aria-selected="false">📥 Bandeja de piezas</button>
     <button role="tab" data-tab="explorador" aria-selected="false">🔬 Explorador táctico</button>
     <button role="tab" data-tab="medida" aria-selected="false">🎛 A medida</button>
@@ -97,6 +98,9 @@
     <summary>Contexto de tendencia (opcional · lo escribís vos y viaja a las placas y a la exportación)</summary>
     <textarea id="contexto" maxlength="600" placeholder="Ej.: esta semana se habló de la defensa del pick &amp; roll en la final de…"></textarea>
   </details>
+
+  <!-- ============================ MESA DE CONTROL ============================ -->
+  <section id="tab-mesa" role="tabpanel" hidden><div id="ms-raiz"><p class="tenue">Cargando la mesa…</p></div></section>
 
   <!-- ============================ AGENCIA ============================ -->
   <section id="tab-agencia" role="tabpanel"><div id="ag-raiz"><p class="tenue">Cargando la agencia…</p></div></section>
@@ -208,6 +212,7 @@
 </main>
 
 <script src="/agencia-ui.js"></script>
+<script src="/mesa-ui.js"></script>
 <script>
 'use strict';
 const $ = (id) => document.getElementById(id);
@@ -244,6 +249,7 @@ function cargarTab(forzar) {
   if (cargado[TAB] === k && !forzar) return;
   cargado[TAB] = k;
   if (TAB === 'agencia') cargarAgencia();
+  if (TAB === 'mesa') cargarMesa(false);
   if (TAB === 'bandeja') cargarBandeja(false);
   if (TAB === 'explorador') { cargarAnomalias(); correrExplorador(); }
   if (TAB === 'medida') pintarFormatos();
